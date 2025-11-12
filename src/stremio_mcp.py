@@ -4,11 +4,9 @@ Stremio MCP Server - Control Stremio on Android TV via ADB
 """
 
 import asyncio
-import json
 import logging
 import os
 from typing import Any, Optional
-from urllib.parse import quote
 
 import requests
 from adb_shell.adb_device import AdbDeviceTcp
