@@ -451,7 +451,7 @@ async def list_tools() -> list[Tool]:
     return [
         Tool(
             name="search",
-            description="Search for movies or TV shows by title. Returns matching results with IMDb IDs.",
+            description="Search for movies or TV shows. Returns results with IMDb IDs.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -462,12 +462,12 @@ async def list_tools() -> list[Tool]:
                     "type": {
                         "type": "string",
                         "enum": ["movie", "tv", "auto"],
-                        "description": "Content type: 'movie', 'tv', or 'auto' to search both",
+                        "description": "movie, tv, or auto (searches both)",
                         "default": "auto"
                     },
                     "year": {
                         "type": "integer",
-                        "description": "Optional year to narrow results"
+                        "description": "Optional year filter"
                     }
                 },
                 "required": ["query"]
@@ -475,61 +475,61 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="play",
-            description="Play any content on Stremio. Search by title or use IMDb ID directly. Can play from TMDB search or your library.",
+            description="Play movies or TV episodes. Use 'query' to search by title, or 'imdb_id' to play directly.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Title to search for (if not using imdb_id)"
+                        "description": "Title to search and play"
                     },
                     "imdb_id": {
                         "type": "string",
-                        "description": "IMDb ID to play directly (e.g., tt0111161)",
+                        "description": "IMDb ID (e.g., tt0111161)",
                         "pattern": "^tt[0-9]+$"
                     },
                     "type": {
                         "type": "string",
                         "enum": ["movie", "tv"],
-                        "description": "Content type (required for search, inferred for IMDb ID)"
+                        "description": "movie or tv (required with query)"
                     },
                     "season": {
                         "type": "integer",
-                        "description": "Season number (required for TV shows)",
+                        "description": "Season number (for TV)",
                         "minimum": 1
                     },
                     "episode": {
                         "type": "integer",
-                        "description": "Episode number (required for TV shows)",
+                        "description": "Episode number (for TV)",
                         "minimum": 1
                     },
                     "source": {
                         "type": "string",
                         "enum": ["search", "library"],
-                        "description": "Where to find content: 'search' (TMDB) or 'library' (your Stremio library)",
+                        "description": "search (TMDB) or library (Stremio)",
                         "default": "search"
                     },
                     "year": {
                         "type": "integer",
-                        "description": "Optional year to narrow search results"
+                        "description": "Optional year filter"
                     }
                 }
             }
         ),
         Tool(
             name="library",
-            description="Access your Stremio library. List all items, see what you're watching, or search your library.",
+            description="Access Stremio library. Actions: list (all items), continue (currently watching), search (find by title).",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "action": {
                         "type": "string",
                         "enum": ["list", "continue", "search"],
-                        "description": "Action: 'list' (all items), 'continue' (currently watching), 'search' (find in library)"
+                        "description": "list, continue, or search"
                     },
                     "query": {
                         "type": "string",
-                        "description": "Search query (required for 'search' action)"
+                        "description": "Title to search (for search action)"
                     }
                 },
                 "required": ["action"]
@@ -537,21 +537,21 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="tv_control",
-            description="Control your Android TV. Manage volume, playback, navigation, and power.",
+            description="Control Android TV. volume: up/down/mute/set. playback: play/pause/toggle/stop/next/previous/forward/rewind. navigate: up/down/left/right/select/back/home. power: wake/sleep/toggle/status.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "category": {
                         "type": "string",
                         "enum": ["volume", "playback", "navigate", "power"],
-                        "description": "Control category"
+                        "description": "volume, playback, navigate, or power"
                     },
                     "action": {
                         "type": "string",
-                        "description": "Action to perform (depends on category)"
+                        "description": "Action name (see tool description for valid actions per category)"
                     },
                     "value": {
-                        "description": "Optional value (e.g., volume level 0-15)"
+                        "description": "Value for 'set' actions (e.g., volume 0-15)"
                     }
                 },
                 "required": ["category", "action"]
