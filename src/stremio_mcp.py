@@ -110,6 +110,126 @@ class StremioController:
             logger.error(f"Failed to send key event: {e}")
             return False
 
+    async def send_shell_command(self, command: str) -> str:
+        """Send a shell command to Android TV and return output"""
+        if not self.device:
+            await self.connect()
+
+        try:
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, self.device.shell, command)
+            return result.strip() if result else ""
+        except Exception as e:
+            logger.error(f"Failed to send shell command: {e}")
+            return ""
+
+    # Volume Controls
+    async def volume_up(self) -> bool:
+        """Increase volume"""
+        return await self.send_key_event(24, delay=0)  # KEYCODE_VOLUME_UP
+
+    async def volume_down(self) -> bool:
+        """Decrease volume"""
+        return await self.send_key_event(25, delay=0)  # KEYCODE_VOLUME_DOWN
+
+    async def volume_mute(self) -> bool:
+        """Mute/unmute volume"""
+        return await self.send_key_event(164, delay=0)  # KEYCODE_VOLUME_MUTE
+
+    async def set_volume(self, level: int) -> bool:
+        """Set volume to specific level (0-15)"""
+        if not 0 <= level <= 15:
+            logger.error("Volume level must be between 0 and 15")
+            return False
+
+        cmd = f"media volume --stream 3 --set {level}"
+        result = await self.send_shell_command(cmd)
+        return result is not None
+
+    # Playback Controls
+    async def play_pause(self) -> bool:
+        """Toggle play/pause"""
+        return await self.send_key_event(85, delay=0)  # KEYCODE_MEDIA_PLAY_PAUSE
+
+    async def media_play(self) -> bool:
+        """Play media"""
+        return await self.send_key_event(126, delay=0)  # KEYCODE_MEDIA_PLAY
+
+    async def media_pause(self) -> bool:
+        """Pause media"""
+        return await self.send_key_event(127, delay=0)  # KEYCODE_MEDIA_PAUSE
+
+    async def media_stop(self) -> bool:
+        """Stop media"""
+        return await self.send_key_event(86, delay=0)  # KEYCODE_MEDIA_STOP
+
+    async def media_next(self) -> bool:
+        """Skip to next"""
+        return await self.send_key_event(87, delay=0)  # KEYCODE_MEDIA_NEXT
+
+    async def media_previous(self) -> bool:
+        """Go to previous"""
+        return await self.send_key_event(88, delay=0)  # KEYCODE_MEDIA_PREVIOUS
+
+    async def fast_forward(self) -> bool:
+        """Fast forward"""
+        return await self.send_key_event(90, delay=0)  # KEYCODE_MEDIA_FAST_FORWARD
+
+    async def rewind(self) -> bool:
+        """Rewind"""
+        return await self.send_key_event(89, delay=0)  # KEYCODE_MEDIA_REWIND
+
+    # Navigation Controls
+    async def nav_up(self) -> bool:
+        """Navigate up"""
+        return await self.send_key_event(19, delay=0)  # KEYCODE_DPAD_UP
+
+    async def nav_down(self) -> bool:
+        """Navigate down"""
+        return await self.send_key_event(20, delay=0)  # KEYCODE_DPAD_DOWN
+
+    async def nav_left(self) -> bool:
+        """Navigate left"""
+        return await self.send_key_event(21, delay=0)  # KEYCODE_DPAD_LEFT
+
+    async def nav_right(self) -> bool:
+        """Navigate right"""
+        return await self.send_key_event(22, delay=0)  # KEYCODE_DPAD_RIGHT
+
+    async def nav_select(self) -> bool:
+        """Select/OK"""
+        return await self.send_key_event(23, delay=0)  # KEYCODE_DPAD_CENTER
+
+    async def nav_back(self) -> bool:
+        """Go back"""
+        return await self.send_key_event(4, delay=0)  # KEYCODE_BACK
+
+    async def nav_home(self) -> bool:
+        """Go to home screen"""
+        return await self.send_key_event(3, delay=0)  # KEYCODE_HOME
+
+    # Power Controls
+    async def tv_wake(self) -> bool:
+        """Wake TV"""
+        return await self.send_key_event(224, delay=0)  # KEYCODE_WAKEUP
+
+    async def tv_sleep(self) -> bool:
+        """Sleep TV"""
+        return await self.send_key_event(223, delay=0)  # KEYCODE_SLEEP
+
+    async def tv_power(self) -> bool:
+        """Toggle TV power"""
+        return await self.send_key_event(26, delay=0)  # KEYCODE_POWER
+
+    async def get_tv_state(self) -> str:
+        """Check if TV screen is on or off"""
+        result = await self.send_shell_command("dumpsys power | grep 'Display Power: state='")
+        if "state=ON" in result:
+            return "on"
+        elif "state=OFF" in result:
+            return "off"
+        return "unknown"
+
     async def play_content(self, content_type: str, imdb_id: str,
                           season: Optional[int] = None,
                           episode: Optional[int] = None,
@@ -483,6 +603,74 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["title"]
             }
+        ),
+
+        # Android TV Control Tools
+        Tool(
+            name="tv_volume",
+            description="Control TV volume. Can increase, decrease, mute, or set to specific level (0-15).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["up", "down", "mute", "set"],
+                        "description": "Volume action to perform"
+                    },
+                    "level": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 15,
+                        "description": "Volume level (0-15, only for 'set' action)"
+                    }
+                },
+                "required": ["action"]
+            }
+        ),
+        Tool(
+            name="tv_playback",
+            description="Control media playback. Supports play, pause, toggle, stop, next, previous, fast-forward, rewind.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["play", "pause", "toggle", "stop", "next", "previous", "forward", "rewind"],
+                        "description": "Playback action to perform"
+                    }
+                },
+                "required": ["action"]
+            }
+        ),
+        Tool(
+            name="tv_navigate",
+            description="Navigate the TV interface using D-pad controls (up/down/left/right/select) or system buttons (back/home).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "direction": {
+                        "type": "string",
+                        "enum": ["up", "down", "left", "right", "select", "back", "home"],
+                        "description": "Navigation direction or button"
+                    }
+                },
+                "required": ["direction"]
+            }
+        ),
+        Tool(
+            name="tv_power",
+            description="Control TV power state. Can wake, sleep, toggle power, or check current state.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["wake", "sleep", "toggle", "status"],
+                        "description": "Power action to perform"
+                    }
+                },
+                "required": ["action"]
+            }
         )
     ]
 
@@ -824,6 +1012,134 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                 type="text",
                 text=f"Found '{name}' but failed to play it."
             )]
+
+        elif name == "tv_volume":
+            if not controller:
+                return [TextContent(
+                    type="text",
+                    text="Error: ANDROID_TV_HOST not configured."
+                )]
+
+            action = arguments["action"]
+            level = arguments.get("level")
+
+            if action == "up":
+                success = await controller.volume_up()
+                message = "Volume increased" if success else "Failed to increase volume"
+            elif action == "down":
+                success = await controller.volume_down()
+                message = "Volume decreased" if success else "Failed to decrease volume"
+            elif action == "mute":
+                success = await controller.volume_mute()
+                message = "Volume muted/unmuted" if success else "Failed to mute volume"
+            elif action == "set":
+                if level is None:
+                    return [TextContent(type="text", text="Error: Level required for 'set' action")]
+                success = await controller.set_volume(level)
+                message = f"Volume set to {level}" if success else f"Failed to set volume to {level}"
+            else:
+                return [TextContent(type="text", text=f"Unknown action: {action}")]
+
+            return [TextContent(type="text", text=message)]
+
+        elif name == "tv_playback":
+            if not controller:
+                return [TextContent(
+                    type="text",
+                    text="Error: ANDROID_TV_HOST not configured."
+                )]
+
+            action = arguments["action"]
+
+            if action == "play":
+                success = await controller.media_play()
+                message = "Playback started" if success else "Failed to start playback"
+            elif action == "pause":
+                success = await controller.media_pause()
+                message = "Playback paused" if success else "Failed to pause playback"
+            elif action == "toggle":
+                success = await controller.play_pause()
+                message = "Playback toggled" if success else "Failed to toggle playback"
+            elif action == "stop":
+                success = await controller.media_stop()
+                message = "Playback stopped" if success else "Failed to stop playback"
+            elif action == "next":
+                success = await controller.media_next()
+                message = "Skipped to next" if success else "Failed to skip to next"
+            elif action == "previous":
+                success = await controller.media_previous()
+                message = "Went to previous" if success else "Failed to go to previous"
+            elif action == "forward":
+                success = await controller.fast_forward()
+                message = "Fast forwarding" if success else "Failed to fast forward"
+            elif action == "rewind":
+                success = await controller.rewind()
+                message = "Rewinding" if success else "Failed to rewind"
+            else:
+                return [TextContent(type="text", text=f"Unknown action: {action}")]
+
+            return [TextContent(type="text", text=message)]
+
+        elif name == "tv_navigate":
+            if not controller:
+                return [TextContent(
+                    type="text",
+                    text="Error: ANDROID_TV_HOST not configured."
+                )]
+
+            direction = arguments["direction"]
+
+            if direction == "up":
+                success = await controller.nav_up()
+                message = "Navigated up" if success else "Failed to navigate up"
+            elif direction == "down":
+                success = await controller.nav_down()
+                message = "Navigated down" if success else "Failed to navigate down"
+            elif direction == "left":
+                success = await controller.nav_left()
+                message = "Navigated left" if success else "Failed to navigate left"
+            elif direction == "right":
+                success = await controller.nav_right()
+                message = "Navigated right" if success else "Failed to navigate right"
+            elif direction == "select":
+                success = await controller.nav_select()
+                message = "Selected" if success else "Failed to select"
+            elif direction == "back":
+                success = await controller.nav_back()
+                message = "Went back" if success else "Failed to go back"
+            elif direction == "home":
+                success = await controller.nav_home()
+                message = "Went to home" if success else "Failed to go to home"
+            else:
+                return [TextContent(type="text", text=f"Unknown direction: {direction}")]
+
+            return [TextContent(type="text", text=message)]
+
+        elif name == "tv_power":
+            if not controller:
+                return [TextContent(
+                    type="text",
+                    text="Error: ANDROID_TV_HOST not configured."
+                )]
+
+            action = arguments["action"]
+
+            if action == "wake":
+                success = await controller.tv_wake()
+                message = "TV woken up" if success else "Failed to wake TV"
+            elif action == "sleep":
+                success = await controller.tv_sleep()
+                message = "TV put to sleep" if success else "Failed to sleep TV"
+            elif action == "toggle":
+                success = await controller.tv_power()
+                message = "TV power toggled" if success else "Failed to toggle TV power"
+            elif action == "status":
+                state = await controller.get_tv_state()
+                return [TextContent(type="text", text=f"TV is {state}")]
+            else:
+                return [TextContent(type="text", text=f"Unknown action: {action}")]
+
+            return [TextContent(type="text", text=message)]
 
         else:
             return [TextContent(
