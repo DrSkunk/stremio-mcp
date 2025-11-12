@@ -277,13 +277,19 @@ class StremioController:
                         pass
 
             # Get metadata (title)
-            if "metadata:" in line:
-                # Next line usually contains description with title
+            if "metadata:" in line and "description=" in line:
+                # Title is in the same line: "metadata: size=9, description=Title, null, null"
+                try:
+                    desc = line.split("description=")[1].split(",")[0]
+                    status["title"] = desc.strip()
+                except:
+                    pass
+            elif "metadata:" in line:
+                # Check next line for description
                 if i + 1 < len(lines):
                     next_line = lines[i + 1]
                     if "description=" in next_line:
                         try:
-                            # Extract title from description
                             desc = next_line.split("description=")[1].split(",")[0]
                             status["title"] = desc.strip()
                         except:
