@@ -1,0 +1,27 @@
+[project]
+name = "stremio-mcp-server"
+version = "1.0.0"
+description = "MCP server for controlling Stremio on Android TV via ADB"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["mcp", "stremio", "android-tv", "adb", "remote-control"]
+authors = [
+    { name = "Your Name", email = "your.email@example.com" }
+]
+
+dependencies = [
+    "mcp>=0.9.0",
+    "adb-shell>=0.4.4",
+    "pycryptodome>=3.19.0",
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/stremio-mcp-server"
+Repository = "https://github.com/yourusername/stremio-mcp-server"
+Issues = "https://github.com/yourusername/stremio-mcp-server/issues"
+
+[dependency-groups]
+dev = []
