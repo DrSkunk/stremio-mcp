@@ -218,6 +218,12 @@ The MCP server provides these tools:
 8. **search_library** - Search your library for specific titles
 9. **play_from_library** - Play content directly from your library
 
+### Android TV Remote Control
+10. **tv_volume** - Control volume (up/down/mute/set level)
+11. **tv_playback** - Control playback (play/pause/stop/next/previous/forward/rewind)
+12. **tv_navigate** - Navigate interface (up/down/left/right/select/back/home)
+13. **tv_power** - Power control (wake/sleep/toggle/status)
+
 ## Troubleshooting
 
 ### Connection Issues
