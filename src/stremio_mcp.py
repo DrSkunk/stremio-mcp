@@ -450,99 +450,48 @@ async def list_tools() -> list[Tool]:
     """List available tools"""
     return [
         Tool(
-            name="search_movie",
-            description="Search for a movie by title and optionally year. Returns a list of matching movies with their IMDb IDs.",
+            name="search",
+            description="Search for movies or TV shows by title. Returns matching results with IMDb IDs.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "title": {
+                    "query": {
                         "type": "string",
-                        "description": "The movie title to search for"
+                        "description": "Title to search for"
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": ["movie", "tv", "auto"],
+                        "description": "Content type: 'movie', 'tv', or 'auto' to search both",
+                        "default": "auto"
                     },
                     "year": {
                         "type": "integer",
-                        "description": "Optional release year to narrow results"
+                        "description": "Optional year to narrow results"
                     }
                 },
-                "required": ["title"]
+                "required": ["query"]
             }
         ),
         Tool(
-            name="search_tv_show",
-            description="Search for a TV show by title and optionally year. Returns a list of matching TV shows with their IMDb IDs.",
+            name="play",
+            description="Play any content on Stremio. Search by title or use IMDb ID directly. Can play from TMDB search or your library.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "title": {
+                    "query": {
                         "type": "string",
-                        "description": "The TV show title to search for"
+                        "description": "Title to search for (if not using imdb_id)"
                     },
-                    "year": {
-                        "type": "integer",
-                        "description": "Optional first air date year to narrow results"
-                    }
-                },
-                "required": ["title"]
-            }
-        ),
-        Tool(
-            name="play_movie",
-            description="Play a movie on Stremio using its IMDb ID. The movie will start playing on your Android TV.",
-            inputSchema={
-                "type": "object",
-                "properties": {
                     "imdb_id": {
                         "type": "string",
-                        "description": "The IMDb ID of the movie (e.g., tt0111161)",
-                        "pattern": "^tt[0-9]+$"
-                    }
-                },
-                "required": ["imdb_id"]
-            }
-        ),
-        Tool(
-            name="play_tv_episode",
-            description="Play a specific episode of a TV show on Stremio using its IMDb ID, season, and episode numbers.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "imdb_id": {
-                        "type": "string",
-                        "description": "The IMDb ID of the TV show (e.g., tt0903747)",
+                        "description": "IMDb ID to play directly (e.g., tt0111161)",
                         "pattern": "^tt[0-9]+$"
                     },
-                    "season": {
-                        "type": "integer",
-                        "description": "Season number",
-                        "minimum": 1
-                    },
-                    "episode": {
-                        "type": "integer",
-                        "description": "Episode number",
-                        "minimum": 1
-                    }
-                },
-                "required": ["imdb_id", "season", "episode"]
-            }
-        ),
-        Tool(
-            name="play_content",
-            description="Combined tool: Search for a movie or TV show and play it immediately. Provide either a movie title or TV show title with season/episode.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "title": {
-                        "type": "string",
-                        "description": "The title of the movie or TV show"
-                    },
-                    "content_type": {
+                    "type": {
                         "type": "string",
                         "enum": ["movie", "tv"],
-                        "description": "Type of content: 'movie' or 'tv'"
-                    },
-                    "year": {
-                        "type": "integer",
-                        "description": "Optional year to narrow search results"
+                        "description": "Content type (required for search, inferred for IMDb ID)"
                     },
                     "season": {
                         "type": "integer",
@@ -553,123 +502,59 @@ async def list_tools() -> list[Tool]:
                         "type": "integer",
                         "description": "Episode number (required for TV shows)",
                         "minimum": 1
+                    },
+                    "source": {
+                        "type": "string",
+                        "enum": ["search", "library"],
+                        "description": "Where to find content: 'search' (TMDB) or 'library' (your Stremio library)",
+                        "default": "search"
+                    },
+                    "year": {
+                        "type": "integer",
+                        "description": "Optional year to narrow search results"
                     }
-                },
-                "required": ["title", "content_type"]
+                }
             }
         ),
         Tool(
-            name="get_library",
-            description="Get all items from your Stremio library. Returns movies and TV shows you've added to your library.",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
-        ),
-        Tool(
-            name="get_continue_watching",
-            description="Get items you're currently watching (not finished). Perfect for resuming where you left off.",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
-        ),
-        Tool(
-            name="search_library",
-            description="Search your Stremio library for specific titles.",
+            name="library",
+            description="Access your Stremio library. List all items, see what you're watching, or search your library.",
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["list", "continue", "search"],
+                        "description": "Action: 'list' (all items), 'continue' (currently watching), 'search' (find in library)"
+                    },
                     "query": {
                         "type": "string",
-                        "description": "Search query to find in your library"
+                        "description": "Search query (required for 'search' action)"
                     }
                 },
-                "required": ["query"]
+                "required": ["action"]
             }
         ),
         Tool(
-            name="play_from_library",
-            description="Play content directly from your Stremio library by title. Searches your library and plays the first match.",
+            name="tv_control",
+            description="Control your Android TV. Manage volume, playback, navigation, and power.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "title": {
+                    "category": {
                         "type": "string",
-                        "description": "Title of the content in your library"
-                    }
-                },
-                "required": ["title"]
-            }
-        ),
-
-        # Android TV Control Tools
-        Tool(
-            name="tv_volume",
-            description="Control TV volume. Can increase, decrease, mute, or set to specific level (0-15).",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "action": {
-                        "type": "string",
-                        "enum": ["up", "down", "mute", "set"],
-                        "description": "Volume action to perform"
+                        "enum": ["volume", "playback", "navigate", "power"],
+                        "description": "Control category"
                     },
-                    "level": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 15,
-                        "description": "Volume level (0-15, only for 'set' action)"
-                    }
-                },
-                "required": ["action"]
-            }
-        ),
-        Tool(
-            name="tv_playback",
-            description="Control media playback. Supports play, pause, toggle, stop, next, previous, fast-forward, rewind.",
-            inputSchema={
-                "type": "object",
-                "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["play", "pause", "toggle", "stop", "next", "previous", "forward", "rewind"],
-                        "description": "Playback action to perform"
+                        "description": "Action to perform (depends on category)"
+                    },
+                    "value": {
+                        "description": "Optional value (e.g., volume level 0-15)"
                     }
                 },
-                "required": ["action"]
-            }
-        ),
-        Tool(
-            name="tv_navigate",
-            description="Navigate the TV interface using D-pad controls (up/down/left/right/select) or system buttons (back/home).",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "direction": {
-                        "type": "string",
-                        "enum": ["up", "down", "left", "right", "select", "back", "home"],
-                        "description": "Navigation direction or button"
-                    }
-                },
-                "required": ["direction"]
-            }
-        ),
-        Tool(
-            name="tv_power",
-            description="Control TV power state. Can wake, sleep, toggle power, or check current state.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "action": {
-                        "type": "string",
-                        "enum": ["wake", "sleep", "toggle", "status"],
-                        "description": "Power action to perform"
-                    }
-                },
-                "required": ["action"]
+                "required": ["category", "action"]
             }
         )
     ]
@@ -679,467 +564,288 @@ async def list_tools() -> list[Tool]:
 async def call_tool(name: str, arguments: Any) -> list[TextContent]:
     """Handle tool calls"""
 
-    if not tmdb_client and name in ["search_movie", "search_tv_show", "play_content"]:
-        return [TextContent(
-            type="text",
-            text="Error: TMDB_API_KEY not configured. Please set it in your environment."
-        )]
-
-    if not controller and name in ["play_movie", "play_tv_episode", "play_content"]:
-        return [TextContent(
-            type="text",
-            text="Error: ANDROID_TV_HOST not configured. Please set it in your environment."
-        )]
-
     try:
-        if name == "search_movie":
-            results = tmdb_client.search_movie(
-                arguments["title"],
-                arguments.get("year")
-            )
-
-            output = []
-            for movie in results[:5]:  # Limit to top 5 results
-                tmdb_id = movie["id"]
-                external_ids = tmdb_client.get_external_ids("movie", tmdb_id)
-                imdb_id = external_ids.get("imdb_id", "N/A")
-
-                output.append(
-                    f"• {movie['title']} ({movie.get('release_date', 'N/A')[:4]})\n"
-                    f"  IMDb ID: {imdb_id}\n"
-                    f"  Overview: {movie.get('overview', 'No overview available')[:100]}...\n"
-                )
-
-            return [TextContent(
-                type="text",
-                text="\n".join(output) if output else "No results found."
-            )]
-
-        elif name == "search_tv_show":
-            results = tmdb_client.search_tv(
-                arguments["title"],
-                arguments.get("year")
-            )
-
-            output = []
-            for show in results[:5]:  # Limit to top 5 results
-                tmdb_id = show["id"]
-                external_ids = tmdb_client.get_external_ids("tv", tmdb_id)
-                imdb_id = external_ids.get("imdb_id", "N/A")
-
-                output.append(
-                    f"• {show['name']} ({show.get('first_air_date', 'N/A')[:4]})\n"
-                    f"  IMDb ID: {imdb_id}\n"
-                    f"  Overview: {show.get('overview', 'No overview available')[:100]}...\n"
-                )
-
-            return [TextContent(
-                type="text",
-                text="\n".join(output) if output else "No results found."
-            )]
-
-        elif name == "play_movie":
-            imdb_id = arguments["imdb_id"]
-            success = await controller.play_content("movie", imdb_id)
-
-            if success:
-                return [TextContent(
-                    type="text",
-                    text=f"Successfully sent play command for movie {imdb_id} to Stremio on Android TV."
-                )]
-            else:
-                return [TextContent(
-                    type="text",
-                    text=f"Failed to play movie {imdb_id}. Check Android TV connection and Stremio installation."
-                )]
-
-        elif name == "play_tv_episode":
-            imdb_id = arguments["imdb_id"]
-            season = arguments["season"]
-            episode = arguments["episode"]
-
-            success = await controller.play_content("series", imdb_id, season, episode)
-
-            if success:
-                return [TextContent(
-                    type="text",
-                    text=f"Successfully sent play command for {imdb_id} S{season:02d}E{episode:02d} to Stremio on Android TV."
-                )]
-            else:
-                return [TextContent(
-                    type="text",
-                    text=f"Failed to play episode. Check Android TV connection and Stremio installation."
-                )]
-
-        elif name == "play_content":
-            title = arguments["title"]
-            content_type = arguments["content_type"]
-            year = arguments.get("year")
-
-            # Search for content
-            if content_type == "movie":
-                results = tmdb_client.search_movie(title, year)
-                if not results:
-                    return [TextContent(
-                        type="text",
-                        text=f"No movies found matching '{title}'."
-                    )]
-
-                # Get IMDb ID for first result
-                tmdb_id = results[0]["id"]
-                external_ids = tmdb_client.get_external_ids("movie", tmdb_id)
-                imdb_id = external_ids.get("imdb_id")
-
-                if not imdb_id:
-                    return [TextContent(
-                        type="text",
-                        text=f"Found '{results[0]['title']}' but no IMDb ID available."
-                    )]
-
-                # Play the movie
-                success = await controller.play_content("movie", imdb_id)
-
-                if success:
-                    return [TextContent(
-                        type="text",
-                        text=f"Now playing: {results[0]['title']} ({results[0].get('release_date', 'N/A')[:4]}) on Stremio."
-                    )]
-                else:
-                    return [TextContent(
-                        type="text",
-                        text=f"Found the movie but failed to play it on Android TV."
-                    )]
-
-            elif content_type == "tv":
-                season = arguments.get("season")
-                episode = arguments.get("episode")
-
-                if season is None or episode is None:
-                    return [TextContent(
-                        type="text",
-                        text="Season and episode numbers are required for TV shows."
-                    )]
-
-                results = tmdb_client.search_tv(title, year)
-                if not results:
-                    return [TextContent(
-                        type="text",
-                        text=f"No TV shows found matching '{title}'."
-                    )]
-
-                # Get IMDb ID for first result
-                tmdb_id = results[0]["id"]
-                external_ids = tmdb_client.get_external_ids("tv", tmdb_id)
-                imdb_id = external_ids.get("imdb_id")
-
-                if not imdb_id:
-                    return [TextContent(
-                        type="text",
-                        text=f"Found '{results[0]['name']}' but no IMDb ID available."
-                    )]
-
-                # Play the episode
-                success = await controller.play_content("series", imdb_id, season, episode)
-
-                if success:
-                    return [TextContent(
-                        type="text",
-                        text=f"Now playing: {results[0]['name']} S{season:02d}E{episode:02d} on Stremio."
-                    )]
-                else:
-                    return [TextContent(
-                        type="text",
-                        text=f"Found the show but failed to play it on Android TV."
-                    )]
-
-        elif name == "get_library":
-            if not stremio_client:
-                return [TextContent(
-                    type="text",
-                    text="Error: STREMIO_AUTH_KEY not configured. Please set it to access your library."
-                )]
-
-            library = stremio_client.get_library()
-
-            if not library:
-                return [TextContent(
-                    type="text",
-                    text="Your Stremio library is empty or could not be retrieved."
-                )]
-
-            output = [f"Found {len(library)} items in your library:\n"]
-            for item in library[:20]:  # Limit to 20 items
-                name = item.get("name", "Unknown")
-                content_type = item.get("type", "unknown")
-                imdb_id = item.get("_id", "").replace(":", "/")
-
-                output.append(f"• {name} ({content_type})")
-
-            if len(library) > 20:
-                output.append(f"\n... and {len(library) - 20} more items")
-
-            return [TextContent(
-                type="text",
-                text="\n".join(output)
-            )]
-
-        elif name == "get_continue_watching":
-            if not stremio_client:
-                return [TextContent(
-                    type="text",
-                    text="Error: STREMIO_AUTH_KEY not configured. Please set it to access your library."
-                )]
-
-            continue_watching = stremio_client.get_continue_watching()
-
-            if not continue_watching:
-                return [TextContent(
-                    type="text",
-                    text="No items currently in progress."
-                )]
-
-            output = [f"You're currently watching {len(continue_watching)} items:\n"]
-            for item in continue_watching[:10]:
-                name = item.get("name", "Unknown")
-                content_type = item.get("type", "unknown")
-                state = item.get("state", {})
-                video_id = state.get("video_id", "")
-
-                output.append(f"• {name} ({content_type}) - {video_id}")
-
-            return [TextContent(
-                type="text",
-                text="\n".join(output)
-            )]
-
-        elif name == "search_library":
-            if not stremio_client:
-                return [TextContent(
-                    type="text",
-                    text="Error: STREMIO_AUTH_KEY not configured. Please set it to access your library."
-                )]
+        if name == "search":
+            if not tmdb_client:
+                return [TextContent(type="text", text="Error: TMDB_API_KEY not configured.")]
 
             query = arguments["query"]
-            results = stremio_client.search_library(query)
+            search_type = arguments.get("type", "auto")
+            year = arguments.get("year")
 
-            if not results:
-                return [TextContent(
-                    type="text",
-                    text=f"No items found in your library matching '{query}'."
-                )]
+            output = []
 
-            output = [f"Found {len(results)} items matching '{query}':\n"]
-            for item in results:
-                name = item.get("name", "Unknown")
-                content_type = item.get("type", "unknown")
-                imdb_id = item.get("_id", "").split(":")[0]
+            # Search movies
+            if search_type in ["movie", "auto"]:
+                results = tmdb_client.search_movie(query, year)
+                for movie in results[:5]:
+                    tmdb_id = movie["id"]
+                    external_ids = tmdb_client.get_external_ids("movie", tmdb_id)
+                    imdb_id = external_ids.get("imdb_id", "N/A")
+                    output.append(
+                        f"• [MOVIE] {movie['title']} ({movie.get('release_date', 'N/A')[:4]})\n"
+                        f"  IMDb ID: {imdb_id}\n"
+                        f"  {movie.get('overview', 'No overview')[:100]}...\n"
+                    )
 
-                output.append(f"• {name} ({content_type}) - IMDb: {imdb_id}")
+            # Search TV shows
+            if search_type in ["tv", "auto"]:
+                results = tmdb_client.search_tv(query, year)
+                for show in results[:5]:
+                    tmdb_id = show["id"]
+                    external_ids = tmdb_client.get_external_ids("tv", tmdb_id)
+                    imdb_id = external_ids.get("imdb_id", "N/A")
+                    output.append(
+                        f"• [TV] {show['name']} ({show.get('first_air_date', 'N/A')[:4]})\n"
+                        f"  IMDb ID: {imdb_id}\n"
+                        f"  {show.get('overview', 'No overview')[:100]}...\n"
+                    )
 
-            return [TextContent(
-                type="text",
-                text="\n".join(output)
-            )]
+            return [TextContent(type="text", text="\n".join(output) if output else "No results found.")]
 
-        elif name == "play_from_library":
-            if not stremio_client:
-                return [TextContent(
-                    type="text",
-                    text="Error: STREMIO_AUTH_KEY not configured. Please set it to access your library."
-                )]
-
+        elif name == "play":
             if not controller:
-                return [TextContent(
-                    type="text",
-                    text="Error: ANDROID_TV_HOST not configured."
-                )]
+                return [TextContent(type="text", text="Error: ANDROID_TV_HOST not configured.")]
 
-            title = arguments["title"]
-            results = stremio_client.search_library(title)
+            source = arguments.get("source", "search")
+            content_type = arguments.get("type")
+            season = arguments.get("season")
+            episode = arguments.get("episode")
+            imdb_id = arguments.get("imdb_id")
+            query = arguments.get("query")
+            year = arguments.get("year")
 
-            if not results:
-                return [TextContent(
-                    type="text",
-                    text=f"'{title}' not found in your library."
-                )]
-
-            # Get the first result
-            item = results[0]
-            name = item.get("name", "Unknown")
-            content_type = item.get("type", "unknown")
-            item_id = item.get("_id", "")
-
-            # Parse the ID (format: tt1234567:1:1 for series, tt1234567 for movies)
-            parts = item_id.split(":")
-            imdb_id = parts[0]
-
-            if content_type == "series" and len(parts) >= 3:
-                # For series, use the video from state if available
-                state = item.get("state", {})
-                video_id = state.get("video_id", "")
-
-                if video_id and ":" in video_id:
-                    vid_parts = video_id.split(":")
-                    if len(vid_parts) >= 3:
-                        season = int(vid_parts[1])
-                        episode = int(vid_parts[2])
-                        success = await controller.play_content("series", imdb_id, season, episode)
-                    else:
-                        season = int(parts[1]) if len(parts) > 1 else 1
-                        episode = int(parts[2]) if len(parts) > 2 else 1
-                        success = await controller.play_content("series", imdb_id, season, episode)
-                else:
-                    season = int(parts[1]) if len(parts) > 1 else 1
-                    episode = int(parts[2]) if len(parts) > 2 else 1
+            # If IMDb ID provided, play directly
+            if imdb_id:
+                if season and episode:
                     success = await controller.play_content("series", imdb_id, season, episode)
+                    msg = f"S{season:02d}E{episode:02d}" if success else "episode"
+                else:
+                    success = await controller.play_content("movie", imdb_id)
+                    msg = imdb_id if success else "movie"
 
-                if success:
-                    return [TextContent(
-                        type="text",
-                        text=f"Now playing: {name} S{season:02d}E{episode:02d} from your library."
-                    )]
-            else:
-                # For movies
-                success = await controller.play_content("movie", imdb_id)
+                return [TextContent(type="text",
+                    text=f"{'Now playing' if success else 'Failed to play'}: {msg}")]
 
-                if success:
-                    return [TextContent(
-                        type="text",
-                        text=f"Now playing: {name} from your library."
-                    )]
+            # Search and play
+            if not query or not content_type:
+                return [TextContent(type="text", text="Error: Need 'query' and 'type' or 'imdb_id'.")]
 
-            return [TextContent(
-                type="text",
-                text=f"Found '{name}' but failed to play it."
-            )]
+            if source == "library":
+                if not stremio_client:
+                    return [TextContent(type="text", text="Error: STREMIO_AUTH_KEY not configured.")]
 
-        elif name == "tv_volume":
-            if not controller:
-                return [TextContent(
-                    type="text",
-                    text="Error: ANDROID_TV_HOST not configured."
-                )]
+                results = stremio_client.search_library(query)
+                if not results:
+                    return [TextContent(type="text", text=f"'{query}' not found in library.")]
 
-            action = arguments["action"]
-            level = arguments.get("level")
+                item = results[0]
+                name = item.get("name", "Unknown")
+                item_type = item.get("type")
+                item_id = item.get("_id", "")
+                parts = item_id.split(":")
+                imdb_id = parts[0]
 
-            if action == "up":
-                success = await controller.volume_up()
-                message = "Volume increased" if success else "Failed to increase volume"
-            elif action == "down":
-                success = await controller.volume_down()
-                message = "Volume decreased" if success else "Failed to decrease volume"
-            elif action == "mute":
-                success = await controller.volume_mute()
-                message = "Volume muted/unmuted" if success else "Failed to mute volume"
-            elif action == "set":
-                if level is None:
-                    return [TextContent(type="text", text="Error: Level required for 'set' action")]
-                success = await controller.set_volume(level)
-                message = f"Volume set to {level}" if success else f"Failed to set volume to {level}"
-            else:
-                return [TextContent(type="text", text=f"Unknown action: {action}")]
+                if item_type == "series":
+                    state = item.get("state", {})
+                    video_id = state.get("video_id", "")
+                    if video_id and ":" in video_id:
+                        vid_parts = video_id.split(":")
+                        season = int(vid_parts[1]) if len(vid_parts) > 1 else 1
+                        episode = int(vid_parts[2]) if len(vid_parts) > 2 else 1
+                    else:
+                        season = season or 1
+                        episode = episode or 1
 
-            return [TextContent(type="text", text=message)]
+                    success = await controller.play_content("series", imdb_id, season, episode)
+                    return [TextContent(type="text",
+                        text=f"{'Now playing' if success else 'Failed to play'}: {name} S{season:02d}E{episode:02d}")]
+                else:
+                    success = await controller.play_content("movie", imdb_id)
+                    return [TextContent(type="text",
+                        text=f"{'Now playing' if success else 'Failed to play'}: {name}")]
 
-        elif name == "tv_playback":
-            if not controller:
-                return [TextContent(
-                    type="text",
-                    text="Error: ANDROID_TV_HOST not configured."
-                )]
+            else:  # source == "search"
+                if not tmdb_client:
+                    return [TextContent(type="text", text="Error: TMDB_API_KEY not configured.")]
 
-            action = arguments["action"]
+                if content_type == "movie":
+                    results = tmdb_client.search_movie(query, year)
+                    if not results:
+                        return [TextContent(type="text", text=f"No movies found for '{query}'.")]
 
-            if action == "play":
-                success = await controller.media_play()
-                message = "Playback started" if success else "Failed to start playback"
-            elif action == "pause":
-                success = await controller.media_pause()
-                message = "Playback paused" if success else "Failed to pause playback"
-            elif action == "toggle":
-                success = await controller.play_pause()
-                message = "Playback toggled" if success else "Failed to toggle playback"
-            elif action == "stop":
-                success = await controller.media_stop()
-                message = "Playback stopped" if success else "Failed to stop playback"
-            elif action == "next":
-                success = await controller.media_next()
-                message = "Skipped to next" if success else "Failed to skip to next"
-            elif action == "previous":
-                success = await controller.media_previous()
-                message = "Went to previous" if success else "Failed to go to previous"
-            elif action == "forward":
-                success = await controller.fast_forward()
-                message = "Fast forwarding" if success else "Failed to fast forward"
-            elif action == "rewind":
-                success = await controller.rewind()
-                message = "Rewinding" if success else "Failed to rewind"
-            else:
-                return [TextContent(type="text", text=f"Unknown action: {action}")]
+                    tmdb_id = results[0]["id"]
+                    external_ids = tmdb_client.get_external_ids("movie", tmdb_id)
+                    imdb_id = external_ids.get("imdb_id")
 
-            return [TextContent(type="text", text=message)]
+                    if not imdb_id:
+                        return [TextContent(type="text", text=f"Found '{results[0]['title']}' but no IMDb ID.")]
 
-        elif name == "tv_navigate":
-            if not controller:
-                return [TextContent(
-                    type="text",
-                    text="Error: ANDROID_TV_HOST not configured."
-                )]
+                    success = await controller.play_content("movie", imdb_id)
+                    return [TextContent(type="text",
+                        text=f"{'Now playing' if success else 'Failed to play'}: {results[0]['title']}")]
 
-            direction = arguments["direction"]
+                elif content_type == "tv":
+                    if not season or not episode:
+                        return [TextContent(type="text", text="TV shows need season and episode numbers.")]
 
-            if direction == "up":
-                success = await controller.nav_up()
-                message = "Navigated up" if success else "Failed to navigate up"
-            elif direction == "down":
-                success = await controller.nav_down()
-                message = "Navigated down" if success else "Failed to navigate down"
-            elif direction == "left":
-                success = await controller.nav_left()
-                message = "Navigated left" if success else "Failed to navigate left"
-            elif direction == "right":
-                success = await controller.nav_right()
-                message = "Navigated right" if success else "Failed to navigate right"
-            elif direction == "select":
-                success = await controller.nav_select()
-                message = "Selected" if success else "Failed to select"
-            elif direction == "back":
-                success = await controller.nav_back()
-                message = "Went back" if success else "Failed to go back"
-            elif direction == "home":
-                success = await controller.nav_home()
-                message = "Went to home" if success else "Failed to go to home"
-            else:
-                return [TextContent(type="text", text=f"Unknown direction: {direction}")]
+                    results = tmdb_client.search_tv(query, year)
+                    if not results:
+                        return [TextContent(type="text", text=f"No TV shows found for '{query}'.")]
 
-            return [TextContent(type="text", text=message)]
+                    tmdb_id = results[0]["id"]
+                    external_ids = tmdb_client.get_external_ids("tv", tmdb_id)
+                    imdb_id = external_ids.get("imdb_id")
 
-        elif name == "tv_power":
-            if not controller:
-                return [TextContent(
-                    type="text",
-                    text="Error: ANDROID_TV_HOST not configured."
-                )]
+                    if not imdb_id:
+                        return [TextContent(type="text", text=f"Found '{results[0]['name']}' but no IMDb ID.")]
+
+                    success = await controller.play_content("series", imdb_id, season, episode)
+                    return [TextContent(type="text",
+                        text=f"{'Now playing' if success else 'Failed to play'}: {results[0]['name']} S{season:02d}E{episode:02d}")]
+
+        elif name == "library":
+            if not stremio_client:
+                return [TextContent(type="text", text="Error: STREMIO_AUTH_KEY not configured.")]
 
             action = arguments["action"]
 
-            if action == "wake":
-                success = await controller.tv_wake()
-                message = "TV woken up" if success else "Failed to wake TV"
-            elif action == "sleep":
-                success = await controller.tv_sleep()
-                message = "TV put to sleep" if success else "Failed to sleep TV"
-            elif action == "toggle":
-                success = await controller.tv_power()
-                message = "TV power toggled" if success else "Failed to toggle TV power"
-            elif action == "status":
-                state = await controller.get_tv_state()
-                return [TextContent(type="text", text=f"TV is {state}")]
-            else:
-                return [TextContent(type="text", text=f"Unknown action: {action}")]
+            if action == "list":
+                library = stremio_client.get_library()
+                if not library:
+                    return [TextContent(type="text", text="Your library is empty or unavailable.")]
 
-            return [TextContent(type="text", text=message)]
+                output = [f"Found {len(library)} items:\n"]
+                for item in library[:20]:
+                    name = item.get("name", "Unknown")
+                    content_type = item.get("type", "unknown")
+                    output.append(f"• {name} ({content_type})")
+
+                if len(library) > 20:
+                    output.append(f"\n... and {len(library) - 20} more")
+
+                return [TextContent(type="text", text="\n".join(output))]
+
+            elif action == "continue":
+                items = stremio_client.get_continue_watching()
+                if not items:
+                    return [TextContent(type="text", text="No items currently in progress.")]
+
+                output = ["Currently watching:\n"]
+                for item in items:
+                    name = item.get("name", "Unknown")
+                    content_type = item.get("type", "unknown")
+                    state = item.get("state", {})
+                    video_id = state.get("video_id", "")
+
+                    if ":" in video_id:
+                        parts = video_id.split(":")
+                        season = parts[1] if len(parts) > 1 else "?"
+                        episode = parts[2] if len(parts) > 2 else "?"
+                        output.append(f"• {name} - S{season}E{episode}")
+                    else:
+                        output.append(f"• {name} ({content_type})")
+
+                return [TextContent(type="text", text="\n".join(output))]
+
+            elif action == "search":
+                query = arguments.get("query")
+                if not query:
+                    return [TextContent(type="text", text="Search action requires 'query' parameter.")]
+
+                results = stremio_client.search_library(query)
+                if not results:
+                    return [TextContent(type="text", text=f"No results for '{query}' in library.")]
+
+                output = [f"Found {len(results)} match(es):\n"]
+                for item in results:
+                    name = item.get("name", "Unknown")
+                    content_type = item.get("type", "unknown")
+                    imdb_id = item.get("_id", "").split(":")[0]
+                    output.append(f"• {name} ({content_type}) - IMDb: {imdb_id}")
+
+                return [TextContent(type="text", text="\n".join(output))]
+
+        elif name == "tv_control":
+            if not controller:
+                return [TextContent(type="text", text="Error: ANDROID_TV_HOST not configured.")]
+
+            category = arguments["category"]
+            action = arguments["action"]
+            value = arguments.get("value")
+
+            if category == "volume":
+                if action == "up":
+                    success = await controller.volume_up()
+                    msg = "Volume increased" if success else "Failed"
+                elif action == "down":
+                    success = await controller.volume_down()
+                    msg = "Volume decreased" if success else "Failed"
+                elif action == "mute":
+                    success = await controller.volume_mute()
+                    msg = "Muted" if success else "Failed"
+                elif action == "set":
+                    if value is None or not (0 <= int(value) <= 15):
+                        return [TextContent(type="text", text="Set requires value 0-15")]
+                    success = await controller.set_volume(int(value))
+                    msg = f"Volume set to {value}" if success else "Failed"
+                else:
+                    return [TextContent(type="text", text=f"Unknown volume action: {action}")]
+
+                return [TextContent(type="text", text=msg)]
+
+            elif category == "playback":
+                actions_map = {
+                    "play": controller.media_play,
+                    "pause": controller.media_pause,
+                    "toggle": controller.play_pause,
+                    "stop": controller.media_stop,
+                    "next": controller.media_next,
+                    "previous": controller.media_previous,
+                    "forward": controller.fast_forward,
+                    "rewind": controller.rewind
+                }
+
+                if action not in actions_map:
+                    return [TextContent(type="text", text=f"Unknown playback action: {action}")]
+
+                success = await actions_map[action]()
+                return [TextContent(type="text", text=f"Playback: {action}" if success else "Failed")]
+
+            elif category == "navigate":
+                actions_map = {
+                    "up": controller.nav_up,
+                    "down": controller.nav_down,
+                    "left": controller.nav_left,
+                    "right": controller.nav_right,
+                    "select": controller.nav_select,
+                    "back": controller.nav_back,
+                    "home": controller.nav_home
+                }
+
+                if action not in actions_map:
+                    return [TextContent(type="text", text=f"Unknown navigate action: {action}")]
+
+                success = await actions_map[action]()
+                return [TextContent(type="text", text=f"Navigate: {action}" if success else "Failed")]
+
+            elif category == "power":
+                if action == "wake":
+                    success = await controller.tv_wake()
+                    msg = "TV waking up" if success else "Failed"
+                elif action == "sleep":
+                    success = await controller.tv_sleep()
+                    msg = "TV going to sleep" if success else "Failed"
+                elif action == "toggle":
+                    success = await controller.tv_power()
+                    msg = "Power toggled" if success else "Failed"
+                elif action == "status":
+                    state = await controller.get_tv_state()
+                    return [TextContent(type="text", text=f"TV is {state}")]
+                else:
+                    return [TextContent(type="text", text=f"Unknown power action: {action}")]
+
+                return [TextContent(type="text", text=msg)]
 
         else:
             return [TextContent(

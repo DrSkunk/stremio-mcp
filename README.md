@@ -203,26 +203,52 @@ Once configured, you can use natural language commands in Claude:
 
 ## Available Tools
 
-The MCP server provides these tools:
+The MCP server provides 4 powerful, consolidated tools:
 
-### Content Search & Playback
-1. **search_movie** - Search for movies by title
-2. **search_tv_show** - Search for TV shows by title
-3. **play_movie** - Play a movie using its IMDb ID
-4. **play_tv_episode** - Play a specific TV episode using IMDb ID
-5. **play_content** - Combined search and play (recommended)
+### 1. **search** - Universal Content Search
+Search for movies or TV shows across TMDB.
+- Search movies only, TV only, or both automatically
+- Filter by year
+- Returns IMDb IDs for easy playback
 
-### Library Access (requires STREMIO_AUTH_KEY)
-6. **get_library** - View all items in your Stremio library
-7. **get_continue_watching** - See what you're currently watching
-8. **search_library** - Search your library for specific titles
-9. **play_from_library** - Play content directly from your library
+**Example**: "Search for Inception" or "Search for Breaking Bad tv shows"
 
-### Android TV Remote Control
-10. **tv_volume** - Control volume (up/down/mute/set level)
-11. **tv_playback** - Control playback (play/pause/stop/next/previous/forward/rewind)
-12. **tv_navigate** - Navigate interface (up/down/left/right/select/back/home)
-13. **tv_power** - Power control (wake/sleep/toggle/status)
+### 2. **play** - Universal Playback
+Play any content from TMDB search or your Stremio library.
+- Play by title search or IMDb ID directly
+- Supports movies and TV episodes
+- Choose source: TMDB search or your library
+- Automatically handles library resume points
+
+**Examples**:
+- "Play Inception"
+- "Play Breaking Bad season 1 episode 1"
+- "Play tt0111161"
+- "Play Breaking Bad from my library"
+
+### 3. **library** - Library Management
+Access and manage your Stremio library.
+- **list**: View all items in your library
+- **continue**: See what you're currently watching
+- **search**: Find specific titles in your library
+
+**Examples**:
+- "List my library"
+- "What am I currently watching?"
+- "Search my library for Breaking Bad"
+
+### 4. **tv_control** - Complete TV Control
+Control all aspects of your Android TV.
+- **volume**: up/down/mute/set (0-15)
+- **playback**: play/pause/toggle/stop/next/previous/forward/rewind
+- **navigate**: up/down/left/right/select/back/home
+- **power**: wake/sleep/toggle/status
+
+**Examples**:
+- "Turn up the volume"
+- "Pause playback"
+- "Navigate down"
+- "Turn off the TV"
 
 ## Troubleshooting
 
