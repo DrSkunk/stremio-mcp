@@ -213,16 +213,16 @@ class StremioAPIClient:
         self.session = requests.Session()
 
     def _make_request(self, method: str, params: dict = None) -> dict:
-        """Make a JSON-RPC request to Stremio API"""
+        """Make a request to Stremio API"""
+        # Flatten params into the main payload
         payload = {
             "authKey": self.auth_key,
-            "method": method,
-            "params": params or []
+            **(params or {})
         }
 
         try:
             response = self.session.post(
-                f"{self.API_URL}/api",
+                f"{self.API_URL}/api/{method}",
                 json=payload,
                 headers={"Content-Type": "application/json"}
             )
@@ -242,7 +242,6 @@ class StremioAPIClient:
         """Get user's library items"""
         try:
             result = self._make_request("datastoreGet", {
-                "authKey": self.auth_key,
                 "collection": "libraryItem",
                 "all": True
             })
