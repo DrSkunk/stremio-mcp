@@ -4,11 +4,18 @@ An MCP (Model Context Protocol) server that allows you to control Stremio on you
 
 ## Features
 
-- **Search Content**: Find movies and TV shows by title
+### Playback Control
+- **Search Content**: Find movies and TV shows by title (via TMDB)
 - **Play Movies**: Instantly play movies on your Android TV
 - **Play TV Episodes**: Play specific episodes of TV shows
 - **One-Command Playback**: Search and play in a single command
 - **Deep Link Integration**: Uses Stremio's native deep linking for seamless playback
+
+### Library Access (Optional)
+- **Browse Your Library**: View all movies and TV shows in your Stremio library
+- **Continue Watching**: See what you're currently watching
+- **Search Library**: Find specific titles in your library
+- **Play from Library**: Play content directly from your library
 
 ## How It Works
 
@@ -42,7 +49,20 @@ Get a free API key from The Movie Database:
 3. Request an API key (choose "Developer" option)
 4. Copy your API key
 
-### 3. Python and uv
+### 3. Stremio Authentication Key (Optional)
+
+For library access features, you'll need your Stremio auth key:
+
+1. Go to [https://web.stremio.com](https://web.stremio.com) and login
+2. Open browser console (F12)
+3. Run: `JSON.parse(localStorage.getItem("profile")).auth.key`
+4. Copy the output value
+
+**See [GET_AUTH_KEY.md](GET_AUTH_KEY.md) for detailed instructions.**
+
+> **Note**: This is optional. You can use the MCP server without library access - you just won't be able to browse or play from your Stremio library.
+
+### 4. Python and uv
 
 - Python 3.10 or higher
 - [uv](https://docs.astral.sh/uv/) - Fast Python package installer (will be installed automatically by setup script)
@@ -127,7 +147,8 @@ Add this to your Claude Desktop configuration file:
       "env": {
         "TMDB_API_KEY": "your_tmdb_api_key_here",
         "ANDROID_TV_HOST": "192.168.1.100",
-        "ANDROID_TV_PORT": "5555"
+        "ANDROID_TV_PORT": "5555",
+        "STREMIO_AUTH_KEY": "your_stremio_auth_key_here"
       }
     }
   }
@@ -163,6 +184,16 @@ Once configured, you can use natural language commands in Claude:
 "Play Game of Thrones S05E08"
 ```
 
+### Library Commands (with STREMIO_AUTH_KEY configured)
+
+```
+"Show me my Stremio library"
+"What am I currently watching?"
+"Search my library for Breaking Bad"
+"Play Breaking Bad from my library"
+"Continue watching from where I left off"
+```
+
 ### Direct Playback (if you have IMDb ID)
 
 ```
@@ -174,11 +205,18 @@ Once configured, you can use natural language commands in Claude:
 
 The MCP server provides these tools:
 
+### Content Search & Playback
 1. **search_movie** - Search for movies by title
 2. **search_tv_show** - Search for TV shows by title
 3. **play_movie** - Play a movie using its IMDb ID
 4. **play_tv_episode** - Play a specific TV episode using IMDb ID
 5. **play_content** - Combined search and play (recommended)
+
+### Library Access (requires STREMIO_AUTH_KEY)
+6. **get_library** - View all items in your Stremio library
+7. **get_continue_watching** - See what you're currently watching
+8. **search_library** - Search your library for specific titles
+9. **play_from_library** - Play content directly from your library
 
 ## Troubleshooting
 

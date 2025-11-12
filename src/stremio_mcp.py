@@ -25,6 +25,7 @@ logger = logging.getLogger("stremio-mcp")
 TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
 ANDROID_TV_HOST = os.getenv("ANDROID_TV_HOST", "")
 ANDROID_TV_PORT = int(os.getenv("ANDROID_TV_PORT", "5555"))
+STREMIO_AUTH_KEY = os.getenv("STREMIO_AUTH_KEY", "")
 ADB_KEY_PATH = os.path.expanduser("~/.android/adbkey")
 
 class StremioController:
@@ -202,17 +203,101 @@ class TMDBClient:
             return {}
 
 
+class StremioAPIClient:
+    """Client for Stremio API to access user library"""
+
+    API_URL = "https://api.strem.io"
+
+    def __init__(self, auth_key: str):
+        self.auth_key = auth_key
+        self.session = requests.Session()
+
+    def _make_request(self, method: str, params: dict = None) -> dict:
+        """Make a JSON-RPC request to Stremio API"""
+        payload = {
+            "authKey": self.auth_key,
+            "method": method,
+            "params": params or []
+        }
+
+        try:
+            response = self.session.post(
+                f"{self.API_URL}/api",
+                json=payload,
+                headers={"Content-Type": "application/json"}
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get("error"):
+                logger.error(f"Stremio API error: {data['error']}")
+                return {}
+
+            return data.get("result", {})
+        except Exception as e:
+            logger.error(f"Stremio API request failed: {e}")
+            return {}
+
+    def get_library(self) -> list:
+        """Get user's library items"""
+        try:
+            result = self._make_request("datastoreGet", {
+                "authKey": self.auth_key,
+                "collection": "libraryItem",
+                "all": True
+            })
+
+            items = []
+            if isinstance(result, list):
+                items = result
+            elif isinstance(result, dict) and "libraryItem" in result:
+                items = result["libraryItem"]
+
+            logger.info(f"Retrieved {len(items)} library items")
+            return items
+        except Exception as e:
+            logger.error(f"Failed to get library: {e}")
+            return []
+
+    def get_continue_watching(self) -> list:
+        """Get items user is currently watching (not finished)"""
+        library = self.get_library()
+        continue_watching = []
+
+        for item in library:
+            # Check if item has video states and is not finished
+            state = item.get("state", {})
+            if state.get("video_id") and not state.get("watched"):
+                continue_watching.append(item)
+
+        return continue_watching
+
+    def search_library(self, query: str) -> list:
+        """Search user's library for matching titles"""
+        library = self.get_library()
+        query_lower = query.lower()
+
+        results = []
+        for item in library:
+            name = item.get("name", "").lower()
+            if query_lower in name:
+                results.append(item)
+
+        return results
+
+
 # Initialize server
 app = Server("stremio-mcp")
 
 # Global instances
 controller: Optional[StremioController] = None
 tmdb_client: Optional[TMDBClient] = None
+stremio_client: Optional[StremioAPIClient] = None
 
 
 def initialize():
     """Initialize controller and clients"""
-    global controller, tmdb_client
+    global controller, tmdb_client, stremio_client
 
     if not ANDROID_TV_HOST:
         logger.warning("ANDROID_TV_HOST not set. Please configure it.")
@@ -223,6 +308,12 @@ def initialize():
         logger.warning("TMDB_API_KEY not set. Search functionality will be limited.")
     else:
         tmdb_client = TMDBClient(TMDB_API_KEY)
+
+    if not STREMIO_AUTH_KEY:
+        logger.warning("STREMIO_AUTH_KEY not set. Library access will be disabled.")
+    else:
+        stremio_client = StremioAPIClient(STREMIO_AUTH_KEY)
+        logger.info("Stremio library access enabled")
 
 
 @app.list_tools()
@@ -336,6 +427,52 @@ async def list_tools() -> list[Tool]:
                     }
                 },
                 "required": ["title", "content_type"]
+            }
+        ),
+        Tool(
+            name="get_library",
+            description="Get all items from your Stremio library. Returns movies and TV shows you've added to your library.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
+            name="get_continue_watching",
+            description="Get items you're currently watching (not finished). Perfect for resuming where you left off.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
+            name="search_library",
+            description="Search your Stremio library for specific titles.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query to find in your library"
+                    }
+                },
+                "required": ["query"]
+            }
+        ),
+        Tool(
+            name="play_from_library",
+            description="Play content directly from your Stremio library by title. Searches your library and plays the first match.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Title of the content in your library"
+                    }
+                },
+                "required": ["title"]
             }
         )
     ]
@@ -517,6 +654,167 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                         type="text",
                         text=f"Found the show but failed to play it on Android TV."
                     )]
+
+        elif name == "get_library":
+            if not stremio_client:
+                return [TextContent(
+                    type="text",
+                    text="Error: STREMIO_AUTH_KEY not configured. Please set it to access your library."
+                )]
+
+            library = stremio_client.get_library()
+
+            if not library:
+                return [TextContent(
+                    type="text",
+                    text="Your Stremio library is empty or could not be retrieved."
+                )]
+
+            output = [f"Found {len(library)} items in your library:\n"]
+            for item in library[:20]:  # Limit to 20 items
+                name = item.get("name", "Unknown")
+                content_type = item.get("type", "unknown")
+                imdb_id = item.get("_id", "").replace(":", "/")
+
+                output.append(f"• {name} ({content_type})")
+
+            if len(library) > 20:
+                output.append(f"\n... and {len(library) - 20} more items")
+
+            return [TextContent(
+                type="text",
+                text="\n".join(output)
+            )]
+
+        elif name == "get_continue_watching":
+            if not stremio_client:
+                return [TextContent(
+                    type="text",
+                    text="Error: STREMIO_AUTH_KEY not configured. Please set it to access your library."
+                )]
+
+            continue_watching = stremio_client.get_continue_watching()
+
+            if not continue_watching:
+                return [TextContent(
+                    type="text",
+                    text="No items currently in progress."
+                )]
+
+            output = [f"You're currently watching {len(continue_watching)} items:\n"]
+            for item in continue_watching[:10]:
+                name = item.get("name", "Unknown")
+                content_type = item.get("type", "unknown")
+                state = item.get("state", {})
+                video_id = state.get("video_id", "")
+
+                output.append(f"• {name} ({content_type}) - {video_id}")
+
+            return [TextContent(
+                type="text",
+                text="\n".join(output)
+            )]
+
+        elif name == "search_library":
+            if not stremio_client:
+                return [TextContent(
+                    type="text",
+                    text="Error: STREMIO_AUTH_KEY not configured. Please set it to access your library."
+                )]
+
+            query = arguments["query"]
+            results = stremio_client.search_library(query)
+
+            if not results:
+                return [TextContent(
+                    type="text",
+                    text=f"No items found in your library matching '{query}'."
+                )]
+
+            output = [f"Found {len(results)} items matching '{query}':\n"]
+            for item in results:
+                name = item.get("name", "Unknown")
+                content_type = item.get("type", "unknown")
+                imdb_id = item.get("_id", "").split(":")[0]
+
+                output.append(f"• {name} ({content_type}) - IMDb: {imdb_id}")
+
+            return [TextContent(
+                type="text",
+                text="\n".join(output)
+            )]
+
+        elif name == "play_from_library":
+            if not stremio_client:
+                return [TextContent(
+                    type="text",
+                    text="Error: STREMIO_AUTH_KEY not configured. Please set it to access your library."
+                )]
+
+            if not controller:
+                return [TextContent(
+                    type="text",
+                    text="Error: ANDROID_TV_HOST not configured."
+                )]
+
+            title = arguments["title"]
+            results = stremio_client.search_library(title)
+
+            if not results:
+                return [TextContent(
+                    type="text",
+                    text=f"'{title}' not found in your library."
+                )]
+
+            # Get the first result
+            item = results[0]
+            name = item.get("name", "Unknown")
+            content_type = item.get("type", "unknown")
+            item_id = item.get("_id", "")
+
+            # Parse the ID (format: tt1234567:1:1 for series, tt1234567 for movies)
+            parts = item_id.split(":")
+            imdb_id = parts[0]
+
+            if content_type == "series" and len(parts) >= 3:
+                # For series, use the video from state if available
+                state = item.get("state", {})
+                video_id = state.get("video_id", "")
+
+                if video_id and ":" in video_id:
+                    vid_parts = video_id.split(":")
+                    if len(vid_parts) >= 3:
+                        season = int(vid_parts[1])
+                        episode = int(vid_parts[2])
+                        success = await controller.play_content("series", imdb_id, season, episode)
+                    else:
+                        season = int(parts[1]) if len(parts) > 1 else 1
+                        episode = int(parts[2]) if len(parts) > 2 else 1
+                        success = await controller.play_content("series", imdb_id, season, episode)
+                else:
+                    season = int(parts[1]) if len(parts) > 1 else 1
+                    episode = int(parts[2]) if len(parts) > 2 else 1
+                    success = await controller.play_content("series", imdb_id, season, episode)
+
+                if success:
+                    return [TextContent(
+                        type="text",
+                        text=f"Now playing: {name} S{season:02d}E{episode:02d} from your library."
+                    )]
+            else:
+                # For movies
+                success = await controller.play_content("movie", imdb_id)
+
+                if success:
+                    return [TextContent(
+                        type="text",
+                        text=f"Now playing: {name} from your library."
+                    )]
+
+            return [TextContent(
+                type="text",
+                text=f"Found '{name}' but failed to play it."
+            )]
 
         else:
             return [TextContent(
