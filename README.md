@@ -203,7 +203,7 @@ Once configured, you can use natural language commands in Claude:
 
 ## Available Tools
 
-The MCP server provides 4 powerful, consolidated tools:
+The MCP server provides 5 powerful, consolidated tools:
 
 ### 1. **search** - Universal Content Search
 Search for movies or TV shows across TMDB.
@@ -249,6 +249,18 @@ Control all aspects of your Android TV.
 - "Pause playback"
 - "Navigate down"
 - "Turn off the TV"
+
+### 5. **playback_status** - Get Current Playback Status
+Check what's currently playing on your Android TV.
+- Shows app name (e.g., Stremio)
+- Shows current title/episode
+- Shows playback state (playing/paused/stopped)
+- Shows current position and duration
+
+**Examples**:
+- "What's currently playing?"
+- "What am I watching?"
+- "Show playback status"
 
 ## Troubleshooting
 

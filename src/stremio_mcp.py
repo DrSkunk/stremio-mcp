@@ -228,6 +228,69 @@ class StremioController:
             return "off"
         return "unknown"
 
+    async def get_playback_status(self) -> dict:
+        """Get current playback status from media session"""
+        result = await self.send_shell_command("dumpsys media_session")
+
+        status = {
+            "playing": False,
+            "app": None,
+            "title": None,
+            "position": None,
+            "duration": None,
+            "state": "stopped"
+        }
+
+        if not result:
+            return status
+
+        # Parse the output
+        lines = result.split('\n')
+        for i, line in enumerate(lines):
+            # Check if Stremio is active
+            if "com.stremio.one" in line and "active=true" in result:
+                status["app"] = "Stremio"
+
+            # Get playback state
+            if "state=PlaybackState" in line:
+                # state=3 means playing, state=2 means paused
+                if "state=3" in line:
+                    status["playing"] = True
+                    status["state"] = "playing"
+                elif "state=2" in line:
+                    status["state"] = "paused"
+
+                # Extract position (in milliseconds)
+                if "position=" in line:
+                    try:
+                        pos_str = line.split("position=")[1].split(",")[0]
+                        status["position"] = int(pos_str)
+                    except:
+                        pass
+
+                # Extract buffered position as duration estimate
+                if "buffered position=" in line:
+                    try:
+                        buf_str = line.split("buffered position=")[1].split(",")[0]
+                        status["duration"] = int(buf_str)
+                    except:
+                        pass
+
+            # Get metadata (title)
+            if "metadata:" in line:
+                # Next line usually contains description with title
+                if i + 1 < len(lines):
+                    next_line = lines[i + 1]
+                    if "description=" in next_line:
+                        try:
+                            # Extract title from description
+                            desc = next_line.split("description=")[1].split(",")[0]
+                            status["title"] = desc.strip()
+                        except:
+                            pass
+
+        return status
+
     async def play_content(self, content_type: str, imdb_id: str,
                           season: Optional[int] = None,
                           episode: Optional[int] = None,
@@ -554,6 +617,14 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["category", "action"]
             }
+        ),
+        Tool(
+            name="playback_status",
+            description="Get current playback status. Returns app, title, state (playing/paused/stopped), position, and duration.",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            }
         )
     ]
 
@@ -844,6 +915,34 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                     return [TextContent(type="text", text=f"Unknown power action: {action}")]
 
                 return [TextContent(type="text", text=msg)]
+
+        elif name == "playback_status":
+            status = await controller.get_playback_status()
+
+            if not status["app"]:
+                return [TextContent(type="text", text="No active media session found")]
+
+            # Format position and duration
+            position_str = "Unknown"
+            duration_str = "Unknown"
+
+            if status["position"] is not None:
+                # Convert milliseconds to MM:SS
+                pos_seconds = status["position"] // 1000
+                position_str = f"{pos_seconds // 60}:{pos_seconds % 60:02d}"
+
+            if status["duration"] is not None:
+                dur_seconds = status["duration"] // 1000
+                duration_str = f"{dur_seconds // 60}:{dur_seconds % 60:02d}"
+
+            response = f"""**Playback Status**
+
+App: {status["app"]}
+Title: {status["title"] or "Unknown"}
+State: {status["state"]}
+Position: {position_str} / {duration_str}"""
+
+            return [TextContent(type="text", text=response)]
 
         else:
             return [TextContent(
