@@ -264,10 +264,20 @@ class StremioAPIClient:
         continue_watching = []
 
         for item in library:
-            # Check if item has video states and is not finished
             state = item.get("state", {})
-            if state.get("video_id") and not state.get("watched"):
+            video_id = state.get("video_id", "")
+
+            # Include items that have been started (have video_id and lastWatched)
+            # Exclude items that are fully watched (flaggedWatched == 1 for movies)
+            # For series, check if there's a video_id (meaning they're mid-episode or mid-series)
+            if video_id and state.get("lastWatched"):
+                # For movies, skip if flaggedWatched is 1 (fully watched)
+                if item.get("type") == "movie" and state.get("flaggedWatched") == 1:
+                    continue
                 continue_watching.append(item)
+
+        # Sort by most recently watched
+        continue_watching.sort(key=lambda x: x.get("state", {}).get("lastWatched", ""), reverse=True)
 
         return continue_watching
 
