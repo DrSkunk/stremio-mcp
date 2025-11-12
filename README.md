@@ -62,7 +62,35 @@ For library access features, you'll need your Stremio auth key:
 
 > **Note**: This is optional. You can use the MCP server without library access - you just won't be able to browse or play from your Stremio library.
 
-### 4. Python and uv
+### 4. ADB (Android Debug Bridge)
+
+ADB is required to communicate with your Android TV. Install it based on your operating system:
+
+**macOS**:
+```bash
+brew install android-platform-tools
+```
+
+**Linux (Ubuntu/Debian)**:
+```bash
+sudo apt-get update
+sudo apt-get install android-tools-adb
+```
+
+**Linux (Fedora)**:
+```bash
+sudo dnf install android-tools
+```
+
+**Windows**:
+Download the [SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools) and add the folder to your PATH.
+
+Verify installation:
+```bash
+adb --version
+```
+
+### 5. Python and uv
 
 - Python 3.10 or higher
 - [uv](https://docs.astral.sh/uv/) - Fast Python package installer (will be installed automatically by setup script)
@@ -115,6 +143,8 @@ ANDROID_TV_PORT=5555
 ```
 
 ### 4. Connect to Android TV (First Time Setup)
+
+**Note**: Make sure you have ADB installed (see Prerequisites section above).
 
 The first time you connect, you need to pair your computer with Android TV:
 
