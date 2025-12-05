@@ -2,6 +2,25 @@
 
 An MCP (Model Context Protocol) server that allows you to control Stremio on your Android TV using voice commands or text prompts. Search for movies and TV shows, then play them instantly on your Android TV!
 
+## Home Assistant Addon
+
+This repository can be used as a Home Assistant addon, providing:
+- **UI-configurable options** for TMDB API key, Android TV host, and Stremio auth key
+- **ADB included** in the container for seamless Android TV control
+- **Easy installation** via Home Assistant's addon system
+
+### Installation
+
+1. Add this repository to your Home Assistant addon store:
+   - Go to **Settings** > **Add-ons** > **Add-on Store**
+   - Click the three dots menu and select **Repositories**
+   - Add: `https://github.com/DrSkunk/stremio-mcp`
+2. Find "Stremio MCP Server" and click **Install**
+3. Configure the addon with your TMDB API key and Android TV IP address
+4. Start the addon
+
+See [stremio-mcp/DOCS.md](stremio-mcp/DOCS.md) for detailed configuration options.
+
 ## Features
 
 ### Playback Control

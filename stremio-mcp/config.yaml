@@ -1,0 +1,24 @@
+name: "Stremio MCP Server"
+description: "MCP server for controlling Stremio on Android TV via ADB"
+version: "1.0.0"
+slug: "stremio-mcp"
+url: "https://github.com/DrSkunk/stremio-mcp"
+arch:
+  - amd64
+  - aarch64
+  - armv7
+init: false
+homeassistant_api: false
+stdin: true
+map:
+  - share:rw
+options:
+  tmdb_api_key: ""
+  android_tv_host: ""
+  android_tv_port: 5555
+  stremio_auth_key: ""
+schema:
+  tmdb_api_key: "str"
+  android_tv_host: "str"
+  android_tv_port: "port"
+  stremio_auth_key: "str?"
