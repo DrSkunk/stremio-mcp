@@ -69,3 +69,5 @@ For direct Claude Desktop integration, configure the MCP server to connect to th
 ```
 
 Replace `homeassistant.local` with your Home Assistant IP address.
+
+**Note**: The container name `addon_local_stremio-mcp` is for local addon installations. If installed from a repository, run `docker ps` on your Home Assistant to find the actual container name.
