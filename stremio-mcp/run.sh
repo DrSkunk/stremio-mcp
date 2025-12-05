@@ -24,7 +24,8 @@ echo "Android TV: ${ANDROID_TV_HOST}:${ANDROID_TV_PORT}"
 check_adb_connection() {
     local target="${ANDROID_TV_HOST}:${ANDROID_TV_PORT}"
     local status
-    status=$(adb devices 2>/dev/null | grep "$target" | awk '{print $2}')
+    # Use grep -F for exact literal string matching to avoid partial hostname matches
+    status=$(adb devices 2>/dev/null | grep -F "$target" | awk '{print $2}')
     
     if [ "$status" = "device" ]; then
         return 0  # Connected and authenticated
@@ -50,15 +51,15 @@ if [ -n "$ANDROID_TV_HOST" ]; then
             break
         fi
         
-        if [ "$i" -lt "$ADB_CONNECT_RETRIES" ]; then
+        if [ "$i" -eq "$ADB_CONNECT_RETRIES" ]; then
+            echo "Warning: ADB authentication not completed after ${ADB_CONNECT_RETRIES} attempts."
+            echo "The server will continue, but ADB commands may fail."
+            echo "Please ensure you accept the RSA key prompt on your Android TV."
+        else
             echo "Attempt $i/${ADB_CONNECT_RETRIES}: Waiting for authentication... (${ADB_RETRY_DELAY}s)"
             sleep "$ADB_RETRY_DELAY"
             # Retry connection in case it dropped
             adb connect "${ANDROID_TV_HOST}:${ANDROID_TV_PORT}" 2>/dev/null || true
-        else
-            echo "Warning: ADB authentication not completed after ${ADB_CONNECT_RETRIES} attempts."
-            echo "The server will continue, but ADB commands may fail."
-            echo "Please ensure you accept the RSA key prompt on your Android TV."
         fi
     done
 fi
