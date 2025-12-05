@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
 Stremio MCP Server - Control Stremio on Android TV via ADB
+
+Supports both stdio and SSE (Server-Sent Events) transports.
+Set MCP_TRANSPORT=sse and MCP_PORT=9821 for SSE mode.
 """
 
+import argparse
 import asyncio
 import logging
 import os
@@ -389,6 +393,32 @@ class TMDBClient:
             logger.error(f"Failed to get external IDs: {e}")
             return {}
 
+    def get_tv_details(self, tmdb_id: int) -> dict:
+        """Get TV show details including seasons"""
+        try:
+            response = self.session.get(
+                f"{self.BASE_URL}/tv/{tmdb_id}",
+                params={"api_key": self.api_key}
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Failed to get TV details: {e}")
+            return {}
+
+    def get_season_details(self, tmdb_id: int, season_number: int) -> dict:
+        """Get season details including episodes"""
+        try:
+            response = self.session.get(
+                f"{self.BASE_URL}/tv/{tmdb_id}/season/{season_number}",
+                params={"api_key": self.api_key}
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Failed to get season details: {e}")
+            return {}
+
 
 class StremioAPIClient:
     """Client for Stremio API to access user library"""
@@ -579,6 +609,11 @@ async def list_tools() -> list[Tool]:
                     "year": {
                         "type": "integer",
                         "description": "Optional year filter"
+                    },
+                    "auto_play": {
+                        "type": "boolean",
+                        "description": "Automatically start playback with first available source",
+                        "default": True
                     }
                 }
             }
@@ -672,7 +707,7 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                     imdb_id = external_ids.get("imdb_id", "N/A")
                     output.append(
                         f"• [TV] {show['name']} ({show.get('first_air_date', 'N/A')[:4]})\n"
-                        f"  IMDb ID: {imdb_id}\n"
+                        f"  IMDb ID: {imdb_id} | TMDB ID: {tmdb_id}\n"
                         f"  {show.get('overview', 'No overview')[:100]}...\n"
                     )
 
@@ -689,14 +724,15 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
             imdb_id = arguments.get("imdb_id")
             query = arguments.get("query")
             year = arguments.get("year")
+            auto_play = arguments.get("auto_play", True)
 
             # If IMDb ID provided, play directly
             if imdb_id:
                 if season and episode:
-                    success = await controller.play_content("series", imdb_id, season, episode)
+                    success = await controller.play_content("series", imdb_id, season, episode, auto_press_play=auto_play)
                     msg = f"S{season:02d}E{episode:02d}" if success else "episode"
                 else:
-                    success = await controller.play_content("movie", imdb_id)
+                    success = await controller.play_content("movie", imdb_id, auto_press_play=auto_play)
                     msg = imdb_id if success else "movie"
 
                 return [TextContent(type="text",
@@ -732,11 +768,11 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                         season = season or 1
                         episode = episode or 1
 
-                    success = await controller.play_content("series", imdb_id, season, episode)
+                    success = await controller.play_content("series", imdb_id, season, episode, auto_press_play=auto_play)
                     return [TextContent(type="text",
                         text=f"{'Now playing' if success else 'Failed to play'}: {name} S{season:02d}E{episode:02d}")]
                 else:
-                    success = await controller.play_content("movie", imdb_id)
+                    success = await controller.play_content("movie", imdb_id, auto_press_play=auto_play)
                     return [TextContent(type="text",
                         text=f"{'Now playing' if success else 'Failed to play'}: {name}")]
 
@@ -756,7 +792,7 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                     if not imdb_id:
                         return [TextContent(type="text", text=f"Found '{results[0]['title']}' but no IMDb ID.")]
 
-                    success = await controller.play_content("movie", imdb_id)
+                    success = await controller.play_content("movie", imdb_id, auto_press_play=auto_play)
                     return [TextContent(type="text",
                         text=f"{'Now playing' if success else 'Failed to play'}: {results[0]['title']}")]
 
@@ -775,7 +811,7 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                     if not imdb_id:
                         return [TextContent(type="text", text=f"Found '{results[0]['name']}' but no IMDb ID.")]
 
-                    success = await controller.play_content("series", imdb_id, season, episode)
+                    success = await controller.play_content("series", imdb_id, season, episode, auto_press_play=auto_play)
                     return [TextContent(type="text",
                         text=f"{'Now playing' if success else 'Failed to play'}: {results[0]['name']} S{season:02d}E{episode:02d}")]
 
@@ -964,10 +1000,13 @@ Position: {position_str} / {duration_str}"""
         )]
 
 
-async def main():
-    """Main entry point"""
-    initialize()
+async def handle_tool_call(name: str, arguments: dict) -> list[TextContent]:
+    """Wrapper to call tools from the web interface"""
+    return await call_tool(name, arguments)
 
+
+async def run_stdio():
+    """Run server with stdio transport"""
     async with stdio_server() as (read_stream, write_stream):
         await app.run(
             read_stream,
@@ -976,5 +1015,687 @@ async def main():
         )
 
 
+# HTML template for the test interface
+TEST_INTERFACE_HTML = r"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stremio MCP Test Interface</title>
+    <link rel="icon" type="image/png" href="icon.png">
+    <style>
+        :root {
+            --primary: #7b5bf5;
+            --primary-dark: #6247c7;
+            --bg: #1a1a2e;
+            --card-bg: #16213e;
+            --text: #eaeaea;
+            --text-muted: #a0a0a0;
+            --success: #4caf50;
+            --error: #f44336;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px; }
+        .header img { width: 48px; height: 48px; }
+        h1 { color: var(--primary); margin: 0; }
+        .subtitle { text-align: center; color: var(--text-muted); margin-bottom: 30px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .card h2 { color: var(--primary); margin-bottom: 15px; font-size: 1.2em; }
+        .btn-group { display: flex; flex-wrap: wrap; gap: 8px; }
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        button:hover { background: var(--primary-dark); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #333;
+            border-radius: 8px;
+            background: var(--bg);
+            color: var(--text);
+            margin-bottom: 10px;
+        }
+        .output {
+            background: #0d1117;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            font-family: monospace;
+            font-size: 13px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .status { padding: 10px; border-radius: 8px; margin-bottom: 15px; }
+        .status.connected { background: rgba(76,175,80,0.2); color: var(--success); }
+        .status.disconnected { background: rgba(244,67,54,0.2); color: var(--error); }
+        .status.connecting { background: rgba(255,193,7,0.2); color: #ffc107; }
+        .sse-info { background: var(--card-bg); padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        .sse-info code { background: var(--bg); padding: 2px 6px; border-radius: 4px; }
+        .log-entry { border-bottom: 1px solid #333; padding: 5px 0; }
+        .log-entry:last-child { border-bottom: none; }
+        .log-time { color: var(--text-muted); font-size: 11px; }
+        .log-success { color: var(--success); }
+        .log-error { color: var(--error); }
+        .search-results { margin-top: 15px; max-height: 400px; overflow-y: auto; }
+        .search-result {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: var(--bg);
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+        .search-result:hover { background: #1a1a2e; }
+        .result-info { flex: 1; margin-right: 10px; }
+        .result-title { font-weight: bold; color: var(--text); }
+        .result-meta { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+        .result-type { 
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+        .result-type.movie { background: #e91e63; color: white; }
+        .result-type.tv { background: #2196f3; color: white; }
+        .play-btn {
+            background: #4caf50;
+            padding: 8px 16px;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+        .play-btn:hover { background: #45a049; }
+        .search-row { display: flex; gap: 10px; margin-bottom: 10px; }
+        .search-row input { flex: 1; margin-bottom: 0; }
+        .search-row select { width: 120px; margin-bottom: 0; }
+        .search-row button { white-space: nowrap; }
+        .no-results { color: var(--text-muted); text-align: center; padding: 20px; }
+        .tv-episode-select { display: flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
+        .tv-episode-select select { width: auto; min-width: 120px; max-width: 200px; padding: 6px 8px; margin: 0; font-size: 13px; }
+        .tv-episode-select button { padding: 6px 12px; font-size: 12px; }
+        .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+        .checkbox-row input[type="checkbox"] { width: auto; margin: 0; }
+        .checkbox-row label { color: var(--text-muted); font-size: 14px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="icon.png" alt="Stremio Logo">
+            <h1>Stremio MCP Server</h1>
+        </div>
+        <p class="subtitle">Test Interface for MCP Tools</p>
+        
+        <div class="sse-info">
+            <strong>SSE Endpoint:</strong> <code id="sseEndpoint"></code><br>
+            <small>Use this URL to connect MCP clients (e.g., Claude Desktop)</small>
+        </div>
+        
+        <div id="status" class="status disconnected">● Disconnected</div>
+        
+        <div class="grid">
+            <div class="card" style="grid-column: 1 / -1;">
+                <h2>🔍 Search & Play</h2>
+                <div class="search-row">
+                    <input type="text" id="searchQuery" placeholder="Search movies or TV shows..." onkeypress="if(event.key==='Enter')doSearch()">
+                    <select id="searchType">
+                        <option value="auto">All</option>
+                        <option value="movie">Movies</option>
+                        <option value="tv">TV Shows</option>
+                    </select>
+                    <button onclick="doSearch()">🔍 Search</button>
+                </div>
+                <div class="checkbox-row">
+                    <input type="checkbox" id="autoPlay" checked>
+                    <label for="autoPlay">🚀 Auto-play first available source (press OK after 2.5s to start playback)</label>
+                </div>
+                <div id="searchResults" class="search-results"></div>
+            </div>
+            
+            <div class="card">
+                <h2>📺 Playback Control</h2>
+                <div class="btn-group">
+                    <button onclick="callTool('tv_control', {category: 'playback', action: 'toggle'})">⏯️ Play/Pause</button>
+                    <button onclick="callTool('tv_control', {category: 'playback', action: 'stop'})">⏹️ Stop</button>
+                    <button onclick="callTool('tv_control', {category: 'playback', action: 'next'})">⏭️ Next</button>
+                    <button onclick="callTool('tv_control', {category: 'playback', action: 'previous'})">⏮️ Previous</button>
+                    <button onclick="callTool('tv_control', {category: 'playback', action: 'forward'})">⏩ Forward</button>
+                    <button onclick="callTool('tv_control', {category: 'playback', action: 'rewind'})">⏪ Rewind</button>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>🔊 Volume</h2>
+                <div class="btn-group">
+                    <button onclick="callTool('tv_control', {category: 'volume', action: 'up'})">🔊 Up</button>
+                    <button onclick="callTool('tv_control', {category: 'volume', action: 'down'})">🔉 Down</button>
+                    <button onclick="callTool('tv_control', {category: 'volume', action: 'mute'})">🔇 Mute</button>
+                </div>
+                <input type="range" id="volumeLevel" min="0" max="15" value="10" style="margin-top: 10px;">
+                <button onclick="callTool('tv_control', {category: 'volume', action: 'set', value: parseInt(document.getElementById('volumeLevel').value)})" style="margin-top: 5px;">Set Volume</button>
+            </div>
+            
+            <div class="card">
+                <h2>🎮 Navigation</h2>
+                <div class="btn-group" style="justify-content: center;">
+                    <button onclick="callTool('tv_control', {category: 'navigate', action: 'up'})" style="width: 60px;">⬆️</button>
+                </div>
+                <div class="btn-group" style="justify-content: center; margin-top: 5px;">
+                    <button onclick="callTool('tv_control', {category: 'navigate', action: 'left'})" style="width: 60px;">⬅️</button>
+                    <button onclick="callTool('tv_control', {category: 'navigate', action: 'select'})" style="width: 60px;">OK</button>
+                    <button onclick="callTool('tv_control', {category: 'navigate', action: 'right'})" style="width: 60px;">➡️</button>
+                </div>
+                <div class="btn-group" style="justify-content: center; margin-top: 5px;">
+                    <button onclick="callTool('tv_control', {category: 'navigate', action: 'down'})" style="width: 60px;">⬇️</button>
+                </div>
+                <div class="btn-group" style="justify-content: center; margin-top: 10px;">
+                    <button onclick="callTool('tv_control', {category: 'navigate', action: 'back'})">↩️ Back</button>
+                    <button onclick="callTool('tv_control', {category: 'navigate', action: 'home'})">🏠 Home</button>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>📱 Status</h2>
+                <div class="btn-group">
+                    <button onclick="callTool('playback_status', {})">📊 Playback Status</button>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>⚡ Power</h2>
+                <div class="btn-group">
+                    <button onclick="callTool('tv_control', {category: 'power', action: 'wake'})">💡 Wake</button>
+                    <button onclick="callTool('tv_control', {category: 'power', action: 'sleep'})">😴 Sleep</button>
+                    <button onclick="callTool('tv_control', {category: 'power', action: 'status'})">📋 Status</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card" style="margin-top: 20px;">
+            <h2>📋 Output Log</h2>
+            <button onclick="document.getElementById('output').innerHTML = ''" style="margin-bottom: 10px;">Clear Log</button>
+            <div id="output" class="output">Ready to execute commands...</div>
+        </div>
+    </div>
+    
+    <script>
+        // Get the base path for API calls (works with HA Ingress)
+        const basePath = window.location.pathname.replace(/\/$/, '');
+        const baseUrl = window.location.origin + basePath;
+        document.getElementById('sseEndpoint').textContent = baseUrl + '/sse';
+        
+        let requestId = 1;
+        
+        function log(message, type = 'info') {
+            const output = document.getElementById('output');
+            const time = new Date().toLocaleTimeString();
+            const className = type === 'success' ? 'log-success' : type === 'error' ? 'log-error' : '';
+            output.innerHTML += `<div class="log-entry"><span class="log-time">[${time}]</span> <span class="${className}">${message}</span></div>`;
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        function updateStatus(status, text) {
+            const el = document.getElementById('status');
+            el.className = 'status ' + status;
+            el.textContent = (status === 'connected' ? '●' : status === 'connecting' ? '○' : '●') + ' ' + text;
+        }
+        
+        async function callTool(name, args) {
+            log(`Calling tool: ${name} with args: ${JSON.stringify(args)}`);
+            updateStatus('connecting', 'Executing...');
+            
+            try {
+                const response = await fetch(basePath + '/api/call-tool', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, arguments: args })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    log(`Result: ${JSON.stringify(result.result, null, 2)}`, 'success');
+                    updateStatus('connected', 'Connected');
+                    return result.result;
+                } else {
+                    log(`Error: ${result.error}`, 'error');
+                    updateStatus('disconnected', 'Error');
+                    return null;
+                }
+            } catch (err) {
+                log(`Request failed: ${err.message}`, 'error');
+                updateStatus('disconnected', 'Disconnected');
+                return null;
+            }
+        }
+        
+        async function doSearch() {
+            const query = document.getElementById('searchQuery').value.trim();
+            const type = document.getElementById('searchType').value;
+            const resultsDiv = document.getElementById('searchResults');
+            
+            if (!query) {
+                resultsDiv.innerHTML = '<div class="no-results">Enter a search term</div>';
+                return;
+            }
+            
+            resultsDiv.innerHTML = '<div class="no-results">Searching...</div>';
+            
+            const result = await callTool('search', { query, type });
+            
+            if (!result || result.length === 0) {
+                resultsDiv.innerHTML = '<div class="no-results">No results found</div>';
+                return;
+            }
+            
+            // Parse the result text into structured data
+            const text = result[0] || '';
+            const items = parseSearchResults(text);
+            
+            if (items.length === 0) {
+                resultsDiv.innerHTML = '<div class="no-results">No results found</div>';
+                return;
+            }
+            
+            resultsDiv.innerHTML = items.map(item => {
+                if (item.type === 'tv') {
+                    return `
+                        <div class="search-result" id="result-${item.imdbId}">
+                            <div class="result-info">
+                                <div class="result-title">
+                                    <span class="result-type tv">TV</span>
+                                    ${escapeHtml(item.title)}
+                                </div>
+                                <div class="result-meta">${escapeHtml(item.overview)}</div>
+                                <div class="tv-episode-select">
+                                    <select id="season-${item.imdbId}" onchange="loadEpisodes('${item.imdbId}', '${item.tmdbId}', this.value)">
+                                        <option value="">Loading seasons...</option>
+                                    </select>
+                                    <select id="episode-${item.imdbId}">
+                                        <option value="">Select season first</option>
+                                    </select>
+                                    <button class="play-btn" onclick="playTV('${item.imdbId}')">▶️ Play</button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    return `
+                        <div class="search-result">
+                            <div class="result-info">
+                                <div class="result-title">
+                                    <span class="result-type movie">MOVIE</span>
+                                    ${escapeHtml(item.title)}
+                                </div>
+                                <div class="result-meta">${escapeHtml(item.overview)}</div>
+                            </div>
+                            <button class="play-btn" onclick="playMovie('${item.imdbId}')">▶️ Play</button>
+                        </div>
+                    `;
+                }
+            }).join('');
+            
+            // Load seasons for TV shows
+            items.filter(i => i.type === 'tv' && i.tmdbId).forEach(item => {
+                loadSeasons(item.imdbId, item.tmdbId);
+            });
+        }
+        
+        function parseSearchResults(text) {
+            const items = [];
+            const lines = text.split('\n');
+            let current = null;
+            
+            for (const line of lines) {
+                const movieMatch = line.match(/^• \[MOVIE\] (.+?) \((\d{4})\)/);
+                const tvMatch = line.match(/^• \[TV\] (.+?) \((\d{4})\)/);
+                const imdbMatch = line.match(/IMDb ID: (tt\d+)/);
+                const tmdbMatch = line.match(/TMDB ID: (\d+)/);
+                const overviewLine = line.trim();
+                
+                if (movieMatch) {
+                    if (current) items.push(current);
+                    current = { type: 'movie', title: `${movieMatch[1]} (${movieMatch[2]})`, imdbId: '', tmdbId: '', overview: '' };
+                } else if (tvMatch) {
+                    if (current) items.push(current);
+                    current = { type: 'tv', title: `${tvMatch[1]} (${tvMatch[2]})`, imdbId: '', tmdbId: '', overview: '' };
+                } else if (imdbMatch && current) {
+                    current.imdbId = imdbMatch[1];
+                } else if (tmdbMatch && current) {
+                    current.tmdbId = tmdbMatch[1];
+                } else if (current && overviewLine && !overviewLine.startsWith('•') && !overviewLine.startsWith('IMDb') && !overviewLine.includes('TMDB ID')) {
+                    current.overview = overviewLine;
+                }
+            }
+            if (current) items.push(current);
+            
+            // Filter out items without IMDb ID
+            return items.filter(item => item.imdbId);
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+        
+        function getAutoPlay() {
+            return document.getElementById('autoPlay').checked;
+        }
+        
+        async function loadSeasons(imdbId, tmdbId) {
+            const seasonSelect = document.getElementById(`season-${imdbId}`);
+            if (!seasonSelect) return;
+            
+            try {
+                const response = await fetch(`${basePath}/api/seasons?tmdb_id=${tmdbId}`);
+                const data = await response.json();
+                
+                if (data.success && data.seasons.length > 0) {
+                    seasonSelect.innerHTML = data.seasons.map(s => 
+                        `<option value="${s.season_number}">${s.name} (${s.episode_count} eps)</option>`
+                    ).join('');
+                    
+                    // Load episodes for first season
+                    loadEpisodes(imdbId, tmdbId, data.seasons[0].season_number);
+                } else {
+                    seasonSelect.innerHTML = '<option value="1">Season 1</option>';
+                }
+            } catch (e) {
+                console.error('Failed to load seasons:', e);
+                seasonSelect.innerHTML = '<option value="1">Season 1</option>';
+            }
+        }
+        
+        async function loadEpisodes(imdbId, tmdbId, seasonNumber) {
+            const episodeSelect = document.getElementById(`episode-${imdbId}`);
+            if (!episodeSelect) return;
+            
+            episodeSelect.innerHTML = '<option value="">Loading...</option>';
+            
+            try {
+                const response = await fetch(`${basePath}/api/episodes?tmdb_id=${tmdbId}&season=${seasonNumber}`);
+                const data = await response.json();
+                
+                if (data.success && data.episodes.length > 0) {
+                    episodeSelect.innerHTML = data.episodes.map(e => 
+                        `<option value="${e.episode_number}">E${e.episode_number}: ${escapeHtml(e.name)}</option>`
+                    ).join('');
+                } else {
+                    episodeSelect.innerHTML = '<option value="1">Episode 1</option>';
+                }
+            } catch (e) {
+                console.error('Failed to load episodes:', e);
+                episodeSelect.innerHTML = '<option value="1">Episode 1</option>';
+            }
+        }
+        
+        async function playMovie(imdbId) {
+            const autoPlay = getAutoPlay();
+            log(`Playing movie: ${imdbId} (auto_play: ${autoPlay})`);
+            await callTool('play', { imdb_id: imdbId, type: 'movie', auto_play: autoPlay });
+        }
+        
+        async function playTV(imdbId) {
+            const seasonSelect = document.getElementById(`season-${imdbId}`);
+            const episodeSelect = document.getElementById(`episode-${imdbId}`);
+            const season = parseInt(seasonSelect.value) || 1;
+            const episode = parseInt(episodeSelect.value) || 1;
+            const autoPlay = getAutoPlay();
+            log(`Playing TV: ${imdbId} S${season}E${episode} (auto_play: ${autoPlay})`);
+            await callTool('play', { imdb_id: imdbId, type: 'tv', season, episode, auto_play: autoPlay });
+        }
+        
+        // Check connection on load
+        fetch(basePath + '/api/status')
+            .then(r => r.json())
+            .then(data => {
+                updateStatus('connected', 'Connected - ' + (data.android_tv_connected ? 'Android TV Ready' : 'Android TV Not Connected'));
+                log('Server status: ' + JSON.stringify(data));
+            })
+            .catch(() => updateStatus('disconnected', 'Cannot reach server'));
+    </script>
+</body>
+</html>
+"""
+
+
+def create_sse_app(ingress_port: int = None):
+    """Create ASGI app for SSE transport with web interface"""
+    from mcp.server.sse import SseServerTransport
+    from starlette.applications import Starlette
+    from starlette.routing import Route
+    from starlette.responses import Response, HTMLResponse, JSONResponse, FileResponse
+    from starlette.middleware import Middleware
+    from starlette.middleware.base import BaseHTTPMiddleware
+    import json
+
+    sse = SseServerTransport("/messages/")
+    
+    # Path to icon file
+    icon_path = os.path.join(os.path.dirname(__file__), "icon.png")
+    if not os.path.exists(icon_path):
+        # Try /app path (Docker)
+        icon_path = "/app/icon.png"
+    
+    # Middleware to handle ingress path prefix
+    class IngressMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            # Home Assistant ingress may add a path prefix, handle it gracefully
+            return await call_next(request)
+
+    async def handle_sse(request):
+        async with sse.connect_sse(
+            request.scope, request.receive, request._send
+        ) as streams:
+            await app.run(
+                streams[0],
+                streams[1],
+                app.create_initialization_options()
+            )
+        return Response()
+
+    async def handle_messages(request):
+        await sse.handle_post_message(request.scope, request.receive, request._send)
+        return Response()
+    
+    async def handle_index(request):
+        """Serve the test interface"""
+        return HTMLResponse(TEST_INTERFACE_HTML)
+    
+    async def handle_status(request):
+        """Return server status"""
+        return JSONResponse({
+            "status": "ok",
+            "android_tv_host": ANDROID_TV_HOST,
+            "android_tv_connected": controller is not None,
+            "tmdb_configured": bool(TMDB_API_KEY),
+            "stremio_library": stremio_client is not None,
+        })
+    
+    async def handle_call_tool(request):
+        """Handle tool calls from the web interface"""
+        try:
+            body = await request.json()
+            tool_name = body.get("name")
+            tool_args = body.get("arguments", {})
+            
+            if not tool_name:
+                return JSONResponse({"success": False, "error": "Missing tool name"}, status_code=400)
+            
+            # Import the handle_tool_call function
+            result = await handle_tool_call(tool_name, tool_args)
+            
+            # Extract text content from result
+            if result and len(result) > 0:
+                text_results = [r.text for r in result if hasattr(r, 'text')]
+                return JSONResponse({"success": True, "result": text_results})
+            
+            return JSONResponse({"success": True, "result": []})
+            
+        except Exception as e:
+            logger.error(f"Error in call_tool API: {e}", exc_info=True)
+            return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+    async def handle_icon(request):
+        """Serve the Stremio icon"""
+        if os.path.exists(icon_path):
+            return FileResponse(icon_path, media_type="image/png")
+        return Response(status_code=404)
+
+    async def handle_get_seasons(request):
+        """Get available seasons for a TV show"""
+        try:
+            tmdb_id = request.query_params.get("tmdb_id")
+            if not tmdb_id:
+                return JSONResponse({"success": False, "error": "Missing tmdb_id"}, status_code=400)
+            
+            if not tmdb_client:
+                return JSONResponse({"success": False, "error": "TMDB not configured"}, status_code=500)
+            
+            details = tmdb_client.get_tv_details(int(tmdb_id))
+            if not details:
+                return JSONResponse({"success": False, "error": "Failed to get TV details"}, status_code=500)
+            
+            seasons = []
+            for season in details.get("seasons", []):
+                # Skip season 0 (specials) unless it has episodes
+                season_num = season.get("season_number", 0)
+                episode_count = season.get("episode_count", 0)
+                if season_num > 0 or episode_count > 0:
+                    seasons.append({
+                        "season_number": season_num,
+                        "name": season.get("name", f"Season {season_num}"),
+                        "episode_count": episode_count,
+                        "air_date": season.get("air_date", "")
+                    })
+            
+            return JSONResponse({"success": True, "seasons": seasons})
+            
+        except Exception as e:
+            logger.error(f"Error getting seasons: {e}", exc_info=True)
+            return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+    async def handle_get_episodes(request):
+        """Get available episodes for a TV season"""
+        try:
+            tmdb_id = request.query_params.get("tmdb_id")
+            season_number = request.query_params.get("season")
+            
+            if not tmdb_id or not season_number:
+                return JSONResponse({"success": False, "error": "Missing tmdb_id or season"}, status_code=400)
+            
+            if not tmdb_client:
+                return JSONResponse({"success": False, "error": "TMDB not configured"}, status_code=500)
+            
+            details = tmdb_client.get_season_details(int(tmdb_id), int(season_number))
+            if not details:
+                return JSONResponse({"success": False, "error": "Failed to get season details"}, status_code=500)
+            
+            episodes = []
+            for ep in details.get("episodes", []):
+                episodes.append({
+                    "episode_number": ep.get("episode_number", 0),
+                    "name": ep.get("name", f"Episode {ep.get('episode_number', 0)}"),
+                    "air_date": ep.get("air_date", ""),
+                    "overview": ep.get("overview", "")[:100]
+                })
+            
+            return JSONResponse({"success": True, "episodes": episodes})
+            
+        except Exception as e:
+            logger.error(f"Error getting episodes: {e}", exc_info=True)
+            return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+    return Starlette(
+        debug=True,
+        middleware=[Middleware(IngressMiddleware)],
+        routes=[
+            Route("/", endpoint=handle_index),
+            Route("/icon.png", endpoint=handle_icon),
+            Route("/sse", endpoint=handle_sse),
+            Route("/messages/", endpoint=handle_messages, methods=["POST"]),
+            Route("/api/status", endpoint=handle_status),
+            Route("/api/call-tool", endpoint=handle_call_tool, methods=["POST"]),
+            Route("/api/seasons", endpoint=handle_get_seasons),
+            Route("/api/episodes", endpoint=handle_get_episodes),
+        ],
+    )
+
+
+def run_sse(host: str = "0.0.0.0", port: int = 9821, ingress_port: int = None):
+    """Run server with SSE transport"""
+    import uvicorn
+    
+    logger.info(f"Starting SSE server on {host}:{port}")
+    logger.info(f"Connect using SSE endpoint: http://{host}:{port}/sse")
+    logger.info(f"Web interface available at: http://{host}:{port}/")
+    if ingress_port:
+        logger.info(f"Ingress port: {ingress_port}")
+    
+    asgi_app = create_sse_app(ingress_port)
+    uvicorn.run(asgi_app, host=host, port=port, log_level="info")
+
+
+def main():
+    """Main entry point with transport selection"""
+    parser = argparse.ArgumentParser(description="Stremio MCP Server")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse"],
+        default=os.getenv("MCP_TRANSPORT", "stdio"),
+        help="Transport type (default: stdio, or set MCP_TRANSPORT env var)"
+    )
+    parser.add_argument(
+        "--host",
+        default=os.getenv("MCP_HOST", "0.0.0.0"),
+        help="Host to bind SSE server (default: 0.0.0.0)"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("MCP_PORT", "9821")),
+        help="Port for SSE server (default: 9821, or set MCP_PORT env var)"
+    )
+    
+    args = parser.parse_args()
+    
+    initialize()
+    
+    if args.transport == "sse":
+        run_sse(host=args.host, port=args.port)
+    else:
+        asyncio.run(run_stdio())
+
+
+if __name__ == "__main__":
+    main()
 if __name__ == "__main__":
     asyncio.run(main())

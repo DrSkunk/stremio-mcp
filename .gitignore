@@ -1,5 +1,6 @@
 # Environment variables
 .env
+.sync-ha.env
 
 # Python
 __pycache__/
@@ -46,3 +47,6 @@ Thumbs.db
 # ADB keys (sensitive)
 adbkey
 adbkey.pub
+
+# Snyk Security Extension - AI Rules (auto-generated)
+.github/instructions/snyk_rules.instructions.md

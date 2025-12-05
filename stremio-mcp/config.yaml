@@ -1,6 +1,6 @@
 name: "Stremio MCP Server"
 description: "MCP server for controlling Stremio on Android TV via ADB"
-version: "1.0.1"
+version: "1.2.4"
 slug: "stremio-mcp"
 url: "https://github.com/DrSkunk/stremio-mcp"
 arch:
@@ -10,6 +10,15 @@ arch:
 init: false
 homeassistant_api: false
 stdin: true
+ingress: true
+ingress_port: 8099
+ingress_stream: true
+panel_icon: "mdi:movie-open"
+panel_title: "Stremio MCP"
+ports:
+  9821/tcp: 9821
+ports_description:
+  9821/tcp: "MCP SSE Server"
 map:
   - share:rw
 options:
@@ -17,12 +26,16 @@ options:
   android_tv_host: ""
   android_tv_port: 5555
   stremio_auth_key: ""
-  adb_connect_retries: 10
-  adb_retry_delay: 5
+  adb_connect_retries: 3
+  adb_retry_delay: 30
+  mcp_transport: "sse"
+  mcp_port: 9821
 schema:
   tmdb_api_key: "str"
   android_tv_host: "str"
   android_tv_port: "port"
   stremio_auth_key: "str?"
-  adb_connect_retries: "int(1,60)?"
-  adb_retry_delay: "int(1,30)?"
+  adb_connect_retries: "int(2,10)?"
+  adb_retry_delay: "int(30,60)?"
+  mcp_transport: "list(stdio|sse)?"
+  mcp_port: "port?"

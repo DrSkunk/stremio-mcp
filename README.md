@@ -21,6 +21,23 @@ This repository can be used as a Home Assistant addon, providing:
 
 See [stremio-mcp/DOCS.md](stremio-mcp/DOCS.md) for detailed configuration options.
 
+### Local testing on Home Assistant
+
+If you have SSH access to your Home Assistant server (for example via the Terminal & SSH add-on), you can push local changes of this repository directly into the local add-ons folder with the Python helper `sync_homeassistant.py`.
+
+1. Copy the env template and fill in your connection details (the `.sync-ha.env` file is git-ignored):
+   ```bash
+   cp .sync-ha.env.example .sync-ha.env
+   nano .sync-ha.env  # or your editor of choice
+   ```
+2. Run the sync script (defaults can be overridden via CLI flags or environment variables):
+   ```bash
+   ./sync_homeassistant.py        # deploy changes
+   ./sync_homeassistant.py -n     # dry run preview
+   ```
+
+The script uses `rsync` over SSH, copies the `stremio-mcp` addon directory to `/addons/stremio-mcp` by default, and supports overrides via flags (`--host`, `--user`, `--port`, `--target`, `--source`, `--identity`) or the environment variables `HA_HOST`, `HA_USER`, `HA_PORT`, `HA_TARGET_DIR`, `ADDON_SOURCE_DIR`, and `HA_SSH_KEY`.
+
 ## Features
 
 ### Playback Control
