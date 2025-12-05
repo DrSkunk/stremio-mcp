@@ -12,6 +12,8 @@ The addon can be configured through the Home Assistant UI with the following opt
 | `android_tv_host` | Yes | IP address of your Android TV |
 | `android_tv_port` | No | ADB port (default: 5555) |
 | `stremio_auth_key` | No | Your Stremio authentication key for library access |
+| `adb_connect_retries` | No | Number of times to retry ADB authentication (default: 10, range: 1-60) |
+| `adb_retry_delay` | No | Seconds to wait between ADB authentication retries (default: 5, range: 1-30) |
 
 ## Getting Your TMDB API Key
 
