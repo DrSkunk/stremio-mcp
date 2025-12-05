@@ -17,6 +17,7 @@ WORKDIR /app
 COPY stremio_mcp.py /app/
 COPY requirements.txt /app/
 COPY icon.png /app/
+COPY test_interface.html /app/
 
 # Install Python dependencies
 RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
@@ -34,6 +35,6 @@ EXPOSE 9821
 CMD [ "/run.sh" ]
 
 LABEL \
-    io.hass.version="1.2.7" \
+    io.hass.version="1.2.8" \
     io.hass.type="addon" \
     io.hass.arch="amd64|aarch64|armv7"

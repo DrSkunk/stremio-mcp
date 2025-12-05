@@ -1099,7 +1099,9 @@ async def run_stdio():
 TEST_INTERFACE_HTML_PATH = os.path.join(os.path.dirname(__file__), "test_interface.html")
 if not os.path.exists(TEST_INTERFACE_HTML_PATH):
     # Try /app path (Docker)
-    TEST_INTERFACE_HTML_PATH = "/app/test_interface.html"
+    docker_path = "/app/test_interface.html"
+    if os.path.exists(docker_path):
+        TEST_INTERFACE_HTML_PATH = docker_path
 
 
 def load_test_interface_html() -> str:

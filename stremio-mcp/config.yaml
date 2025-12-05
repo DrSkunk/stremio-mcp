@@ -1,6 +1,6 @@
 name: "Stremio MCP Server"
 description: "MCP server for controlling Stremio on Android TV via ADB"
-version: "1.2.7"
+version: "1.2.8"
 slug: "stremio-mcp"
 url: "https://github.com/DrSkunk/stremio-mcp"
 arch:
