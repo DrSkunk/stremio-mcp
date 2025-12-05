@@ -1,6 +1,6 @@
 name: "Stremio MCP Server"
 description: "MCP server for controlling Stremio on Android TV via ADB"
-version: "1.2.4"
+version: "1.2.7"
 slug: "stremio-mcp"
 url: "https://github.com/DrSkunk/stremio-mcp"
 arch:
@@ -26,6 +26,7 @@ options:
   android_tv_host: ""
   android_tv_port: 5555
   stremio_auth_key: ""
+  external_api_key: ""
   adb_connect_retries: 3
   adb_retry_delay: 30
   mcp_transport: "sse"
@@ -35,6 +36,7 @@ schema:
   android_tv_host: "str"
   android_tv_port: "port"
   stremio_auth_key: "str?"
+  external_api_key: "str?"
   adb_connect_retries: "int(2,10)?"
   adb_retry_delay: "int(30,60)?"
   mcp_transport: "list(stdio|sse)?"

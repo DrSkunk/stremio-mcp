@@ -34,6 +34,6 @@ EXPOSE 9821
 CMD [ "/run.sh" ]
 
 LABEL \
-    io.hass.version="1.2.4" \
+    io.hass.version="1.2.7" \
     io.hass.type="addon" \
     io.hass.arch="amd64|aarch64|armv7"

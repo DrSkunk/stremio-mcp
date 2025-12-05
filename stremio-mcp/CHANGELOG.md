@@ -1,8 +1,15 @@
 # Changelog
 
-## [1.2.0] - Home Assistant Ingress & Web Interface
+## [1.2.7] - Code Refactoring & ADB Stability Improvements
 
-- Added Home Assistant Ingress support for sidebar access
+- Refactored code structure for improved readability and maintainability
+- Enhanced ADB authentication handling with duplicate device detection
+- Improved ADB connection logic with proper error handling
+- Fixed RSA key acceptance flow for more reliable Android TV connections
+
+## [1.2.0] - Home Assistant Addon & Web Interface
+
+- Added Home Assistant addon support for easier installation and configuration
 - Added built-in web test interface with:
   - Search functionality for movies and TV shows
   - Playback controls (play/pause, stop, skip, rewind, fast forward)
@@ -10,30 +17,31 @@
   - Navigation D-pad (up, down, left, right, OK, back, home)
   - Power controls (wake, sleep, status)
   - Real-time output logging
-- Server now accessible via HA sidebar panel
+- Added `playback_status` tool to get current playback information
 - Added `/api/call-tool` endpoint for web interface
 - Added `/api/status` endpoint for connection status
+- Enhanced ADB retry mechanism for RSA key acceptance on Android TV
+- Added configurable `adb_connect_retries` option (default: 10)
+- Added configurable `adb_retry_delay` option (default: 5 seconds)
+- Improved tool descriptions for better LLM clarity
+- Optimized tools into 4 consolidated functions (search, control, status, library)
 
-## [1.1.0] - SSE Transport Support
+## [1.1.0] - Android TV Remote Control & Stremio Integration
 
-- Added SSE (Server-Sent Events) transport support for remote MCP access
-- SSE mode is now the default, enabling direct HTTP-based connections
-- Added configurable `mcp_transport` option (`sse` or `stdio`)
-- Added configurable `mcp_port` option for SSE server (default: 9821)
-- Updated documentation with SSE configuration examples for Claude Desktop
-- Exposed port 9821 in Docker container for SSE connections
-
-## [1.0.1] - ADB Authentication Improvements
-
-- Added retry mechanism for ADB authentication to allow time for RSA key acceptance on Android TV
-- Added configurable `adb_connect_retries` option (default: 10) for number of authentication retries
-- Added configurable `adb_retry_delay` option (default: 5 seconds) for delay between retries
-- Improved logging during ADB connection process
+- Added comprehensive Android TV remote control features:
+  - D-pad navigation
+  - Media playback controls
+  - Volume control
+  - Power management
+- Added Stremio library access for browsing watched content
+- Improved continue watching logic for better context
+- Added ADB installation instructions to README
+- Removed unused dependencies for cleaner codebase
 
 ## [1.0.0] - Initial Release
 
-- Initial Home Assistant addon release
+- Initial Stremio MCP Server for Android TV
 - ADB integration for Android TV control
 - TMDB API integration for movie/TV show search
-- Stremio library access (optional)
-- UI-configurable options
+- Basic remote control functionality
+- Initial tool set for Stremio control

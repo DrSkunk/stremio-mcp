@@ -12,10 +12,89 @@ The addon can be configured through the Home Assistant UI with the following opt
 | `android_tv_host` | Yes | IP address of your Android TV |
 | `android_tv_port` | No | ADB port (default: 5555) |
 | `stremio_auth_key` | No | Your Stremio authentication key for library access |
+| `external_api_key` | No | API key for external access via port 9821 (Siri Shortcuts, automations). Generate a random string. |
 | `adb_connect_retries` | No | Number of times to retry ADB authentication (default: 3, range: 2-10) |
 | `adb_retry_delay` | No | Seconds to wait between ADB authentication retries (default: 30, range: 30-60) |
 | `mcp_transport` | No | Transport type: `sse` (default) or `stdio` |
 | `mcp_port` | No | Port for external SSE server (default: 9821) |
+
+## External API Access (Siri, Shortcuts, Automations)
+
+There are two ways to access the API externally:
+
+### Option 1: Direct Access via Port 9821 (Recommended for Siri)
+
+This is the simplest method. Set an `external_api_key` in the addon configuration, then access the API directly on port 9821.
+
+1. Set `external_api_key` in the addon configuration (any random string, e.g., `my-secret-key-12345`)
+2. Restart the addon
+3. Access via port 9821 with your API key
+
+```bash
+# Using X-API-Key header (recommended)
+curl -X POST "http://YOUR_HA_IP:9821/api/call-tool" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d '{"name": "play", "arguments": {"query": "Wicked", "type": "movie", "auto_play": true}}'
+
+# Or using Authorization Bearer header
+curl -X POST "http://YOUR_HA_IP:9821/api/call-tool" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{"name": "play", "arguments": {"query": "Wicked", "type": "movie", "auto_play": true}}'
+
+# Or using query parameter
+curl -X POST "http://YOUR_HA_IP:9821/api/call-tool?api_key=YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "play", "arguments": {"query": "Wicked", "type": "movie", "auto_play": true}}'
+```
+
+**Note**: You may need to forward port 9821 on your router for external access.
+
+### Siri Shortcut Example
+
+1. Open the **Shortcuts** app on iOS
+2. Create a new Shortcut
+3. Add **Dictate Text** action → save to variable `MovieName`
+4. Add **Get Contents of URL**:
+   - URL: `http://YOUR_HA_IP:9821/api/call-tool`
+   - Method: POST
+   - Headers: 
+     - `Content-Type: application/json`
+     - `X-API-Key: YOUR_API_KEY`
+   - Request Body (JSON):
+     ```json
+     {
+       "name": "play",
+       "arguments": {
+         "query": "[MovieName variable]",
+         "type": "movie",
+         "auto_play": true
+       }
+     }
+     ```
+5. Add the shortcut to Siri with a phrase like "Play a movie on Stremio"
+
+### Option 2: Using Home Assistant REST Command (Internal Only)
+
+For automations that run within Home Assistant, create a REST command in your `configuration.yaml`:
+
+```yaml
+rest_command:
+  stremio_play:
+    url: "http://127.0.0.1:8099/api/call-tool"
+    method: POST
+    content_type: "application/json"
+    payload: '{"name": "play", "arguments": {"query": "{{ query }}", "type": "{{ type | default(''movie'') }}", "auto_play": true}}'
+```
+
+Then call it from automations or scripts:
+```yaml
+service: rest_command.stremio_play
+data:
+  query: "Wicked"
+  type: "movie"
+```
 
 ## Web Interface (Ingress)
 

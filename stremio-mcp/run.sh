@@ -8,6 +8,7 @@ TMDB_API_KEY=$(jq -r '.tmdb_api_key' "$CONFIG_PATH")
 ANDROID_TV_HOST=$(jq -r '.android_tv_host' "$CONFIG_PATH")
 ANDROID_TV_PORT=$(jq -r '.android_tv_port' "$CONFIG_PATH")
 STREMIO_AUTH_KEY=$(jq -r '.stremio_auth_key // ""' "$CONFIG_PATH")
+EXTERNAL_API_KEY=$(jq -r '.external_api_key // ""' "$CONFIG_PATH")
 ADB_CONNECT_RETRIES=$(jq -r '.adb_connect_retries // 10' "$CONFIG_PATH")
 ADB_RETRY_DELAY=$(jq -r '.adb_retry_delay // 5' "$CONFIG_PATH")
 MCP_TRANSPORT=$(jq -r '.mcp_transport // "sse"' "$CONFIG_PATH")
@@ -18,12 +19,16 @@ export TMDB_API_KEY
 export ANDROID_TV_HOST
 export ANDROID_TV_PORT
 export STREMIO_AUTH_KEY
+export EXTERNAL_API_KEY
 export MCP_TRANSPORT
 export MCP_PORT
 
 echo "Starting Stremio MCP Server..."
 echo "Android TV: ${ANDROID_TV_HOST}:${ANDROID_TV_PORT}"
 echo "MCP Transport: ${MCP_TRANSPORT}"
+if [ -n "$EXTERNAL_API_KEY" ]; then
+    echo "External API key configured for port ${MCP_PORT}"
+fi
 
 # Set up persistent ADB keys in /share directory (survives add-on updates)
 ADB_KEYS_DIR="/share/.android"

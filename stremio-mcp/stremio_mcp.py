@@ -28,6 +28,7 @@ TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
 ANDROID_TV_HOST = os.getenv("ANDROID_TV_HOST", "")
 ANDROID_TV_PORT = int(os.getenv("ANDROID_TV_PORT", "5555"))
 STREMIO_AUTH_KEY = os.getenv("STREMIO_AUTH_KEY", "")
+EXTERNAL_API_KEY = os.getenv("EXTERNAL_API_KEY", "")
 ADB_KEY_PATH = os.path.expanduser("~/.android/adbkey")
 
 class StremioController:
@@ -225,11 +226,30 @@ class StremioController:
 
     async def get_tv_state(self) -> str:
         """Check if TV screen is on or off"""
-        result = await self.send_shell_command("dumpsys power | grep 'Display Power: state='")
-        if "state=ON" in result:
+        # Try multiple methods to detect screen state
+        # Method 1: Check Display Power state
+        result = await self.send_shell_command("dumpsys power | grep -E 'Display Power|mScreenOn|mWakefulness'")
+        
+        # Check for various indicators
+        if "state=ON" in result or "mScreenOn=true" in result or "mWakefulness=Awake" in result:
             return "on"
-        elif "state=OFF" in result:
+        elif "state=OFF" in result or "mScreenOn=false" in result or "mWakefulness=Asleep" in result:
             return "off"
+        
+        # Method 2: Check screen state directly
+        result2 = await self.send_shell_command("dumpsys display | grep 'mScreenState'")
+        if "ON" in result2:
+            return "on"
+        elif "OFF" in result2:
+            return "off"
+        
+        # Method 3: Check power manager wakefulness
+        result3 = await self.send_shell_command("dumpsys power | grep 'mWakefulness'")
+        if "Awake" in result3:
+            return "on"
+        elif "Asleep" in result3 or "Dozing" in result3:
+            return "off"
+        
         return "unknown"
 
     async def get_playback_status(self) -> dict:
@@ -301,11 +321,37 @@ class StremioController:
 
         return status
 
+    async def _ensure_tv_awake(self) -> None:
+        """Check if TV is on and wake it if needed"""
+        try:
+            tv_state = await self.get_tv_state()
+            if tv_state == "off":
+                logger.info("TV screen is off, waking it up...")
+                await self.tv_wake()
+                # Wait a moment for the TV to wake up
+                await asyncio.sleep(1.5)
+        except Exception as e:
+            logger.warning(f"Could not check/wake TV state: {e}")
+
+    async def open_content_page(self, content_type: str, imdb_id: str) -> bool:
+        """Open a movie or series detail page in Stremio without auto-playing"""
+        await self._ensure_tv_awake()
+
+        if content_type == "movie":
+            uri = f"stremio:///detail/movie/{imdb_id}"
+        elif content_type == "series":
+            uri = f"stremio:///detail/series/{imdb_id}"
+        else:
+            raise ValueError(f"Unsupported content type: {content_type}")
+
+        return await self.send_intent(uri)
+
     async def play_content(self, content_type: str, imdb_id: str,
                           season: Optional[int] = None,
                           episode: Optional[int] = None,
                           auto_press_play: bool = True) -> bool:
         """Play content in Stremio using deep links"""
+        await self._ensure_tv_awake()
 
         if content_type == "movie":
             # For movies: stremio:///detail/movie/{imdb_id}/{imdb_id}
@@ -666,6 +712,26 @@ async def list_tools() -> list[Tool]:
                 "type": "object",
                 "properties": {}
             }
+        ),
+        Tool(
+            name="open_page",
+            description="Open a movie or series detail page in Stremio without auto-playing. For series, opens the show page where user can browse seasons/episodes.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "imdb_id": {
+                        "type": "string",
+                        "description": "IMDb ID (e.g., tt0111161)",
+                        "pattern": "^tt[0-9]+$"
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": ["movie", "series"],
+                        "description": "movie or series"
+                    }
+                },
+                "required": ["imdb_id", "type"]
+            }
         )
     ]
 
@@ -986,6 +1052,20 @@ Position: {position_str} / {duration_str}"""
 
             return [TextContent(type="text", text=response)]
 
+        elif name == "open_page":
+            if not controller:
+                return [TextContent(type="text", text="Error: ANDROID_TV_HOST not configured.")]
+
+            imdb_id = arguments.get("imdb_id")
+            content_type = arguments.get("type")
+
+            if not imdb_id or not content_type:
+                return [TextContent(type="text", text="Error: 'imdb_id' and 'type' are required.")]
+
+            success = await controller.open_content_page(content_type, imdb_id)
+            return [TextContent(type="text",
+                text=f"{'Opened' if success else 'Failed to open'} {content_type} page: {imdb_id}")]
+
         else:
             return [TextContent(
                 type="text",
@@ -1015,476 +1095,21 @@ async def run_stdio():
         )
 
 
-# HTML template for the test interface
-TEST_INTERFACE_HTML = r"""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stremio MCP Test Interface</title>
-    <link rel="icon" type="image/png" href="icon.png">
-    <style>
-        :root {
-            --primary: #7b5bf5;
-            --primary-dark: #6247c7;
-            --bg: #1a1a2e;
-            --card-bg: #16213e;
-            --text: #eaeaea;
-            --text-muted: #a0a0a0;
-            --success: #4caf50;
-            --error: #f44336;
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .container { max-width: 1200px; margin: 0 auto; }
-        .header { display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px; }
-        .header img { width: 48px; height: 48px; }
-        h1 { color: var(--primary); margin: 0; }
-        .subtitle { text-align: center; color: var(--text-muted); margin-bottom: 30px; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
-        .card {
-            background: var(--card-bg);
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-        }
-        .card h2 { color: var(--primary); margin-bottom: 15px; font-size: 1.2em; }
-        .btn-group { display: flex; flex-wrap: wrap; gap: 8px; }
-        button {
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 10px 16px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background 0.2s;
-        }
-        button:hover { background: var(--primary-dark); }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
-        input, select {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #333;
-            border-radius: 8px;
-            background: var(--bg);
-            color: var(--text);
-            margin-bottom: 10px;
-        }
-        .output {
-            background: #0d1117;
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 20px;
-            font-family: monospace;
-            font-size: 13px;
-            max-height: 300px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            word-break: break-word;
-        }
-        .status { padding: 10px; border-radius: 8px; margin-bottom: 15px; }
-        .status.connected { background: rgba(76,175,80,0.2); color: var(--success); }
-        .status.disconnected { background: rgba(244,67,54,0.2); color: var(--error); }
-        .status.connecting { background: rgba(255,193,7,0.2); color: #ffc107; }
-        .sse-info { background: var(--card-bg); padding: 15px; border-radius: 8px; margin-bottom: 20px; }
-        .sse-info code { background: var(--bg); padding: 2px 6px; border-radius: 4px; }
-        .log-entry { border-bottom: 1px solid #333; padding: 5px 0; }
-        .log-entry:last-child { border-bottom: none; }
-        .log-time { color: var(--text-muted); font-size: 11px; }
-        .log-success { color: var(--success); }
-        .log-error { color: var(--error); }
-        .search-results { margin-top: 15px; max-height: 400px; overflow-y: auto; }
-        .search-result {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px;
-            background: var(--bg);
-            border-radius: 8px;
-            margin-bottom: 8px;
-        }
-        .search-result:hover { background: #1a1a2e; }
-        .result-info { flex: 1; margin-right: 10px; }
-        .result-title { font-weight: bold; color: var(--text); }
-        .result-meta { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
-        .result-type { 
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: bold;
-            margin-right: 8px;
-        }
-        .result-type.movie { background: #e91e63; color: white; }
-        .result-type.tv { background: #2196f3; color: white; }
-        .play-btn {
-            background: #4caf50;
-            padding: 8px 16px;
-            font-size: 14px;
-            white-space: nowrap;
-        }
-        .play-btn:hover { background: #45a049; }
-        .search-row { display: flex; gap: 10px; margin-bottom: 10px; }
-        .search-row input { flex: 1; margin-bottom: 0; }
-        .search-row select { width: 120px; margin-bottom: 0; }
-        .search-row button { white-space: nowrap; }
-        .no-results { color: var(--text-muted); text-align: center; padding: 20px; }
-        .tv-episode-select { display: flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
-        .tv-episode-select select { width: auto; min-width: 120px; max-width: 200px; padding: 6px 8px; margin: 0; font-size: 13px; }
-        .tv-episode-select button { padding: 6px 12px; font-size: 12px; }
-        .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-        .checkbox-row input[type="checkbox"] { width: auto; margin: 0; }
-        .checkbox-row label { color: var(--text-muted); font-size: 14px; cursor: pointer; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <img src="icon.png" alt="Stremio Logo">
-            <h1>Stremio MCP Server</h1>
-        </div>
-        <p class="subtitle">Test Interface for MCP Tools</p>
-        
-        <div class="sse-info">
-            <strong>SSE Endpoint:</strong> <code id="sseEndpoint"></code><br>
-            <small>Use this URL to connect MCP clients (e.g., Claude Desktop)</small>
-        </div>
-        
-        <div id="status" class="status disconnected">● Disconnected</div>
-        
-        <div class="grid">
-            <div class="card" style="grid-column: 1 / -1;">
-                <h2>🔍 Search & Play</h2>
-                <div class="search-row">
-                    <input type="text" id="searchQuery" placeholder="Search movies or TV shows..." onkeypress="if(event.key==='Enter')doSearch()">
-                    <select id="searchType">
-                        <option value="auto">All</option>
-                        <option value="movie">Movies</option>
-                        <option value="tv">TV Shows</option>
-                    </select>
-                    <button onclick="doSearch()">🔍 Search</button>
-                </div>
-                <div class="checkbox-row">
-                    <input type="checkbox" id="autoPlay" checked>
-                    <label for="autoPlay">🚀 Auto-play first available source (press OK after 2.5s to start playback)</label>
-                </div>
-                <div id="searchResults" class="search-results"></div>
-            </div>
-            
-            <div class="card">
-                <h2>📺 Playback Control</h2>
-                <div class="btn-group">
-                    <button onclick="callTool('tv_control', {category: 'playback', action: 'toggle'})">⏯️ Play/Pause</button>
-                    <button onclick="callTool('tv_control', {category: 'playback', action: 'stop'})">⏹️ Stop</button>
-                    <button onclick="callTool('tv_control', {category: 'playback', action: 'next'})">⏭️ Next</button>
-                    <button onclick="callTool('tv_control', {category: 'playback', action: 'previous'})">⏮️ Previous</button>
-                    <button onclick="callTool('tv_control', {category: 'playback', action: 'forward'})">⏩ Forward</button>
-                    <button onclick="callTool('tv_control', {category: 'playback', action: 'rewind'})">⏪ Rewind</button>
-                </div>
-            </div>
-            
-            <div class="card">
-                <h2>🔊 Volume</h2>
-                <div class="btn-group">
-                    <button onclick="callTool('tv_control', {category: 'volume', action: 'up'})">🔊 Up</button>
-                    <button onclick="callTool('tv_control', {category: 'volume', action: 'down'})">🔉 Down</button>
-                    <button onclick="callTool('tv_control', {category: 'volume', action: 'mute'})">🔇 Mute</button>
-                </div>
-                <input type="range" id="volumeLevel" min="0" max="15" value="10" style="margin-top: 10px;">
-                <button onclick="callTool('tv_control', {category: 'volume', action: 'set', value: parseInt(document.getElementById('volumeLevel').value)})" style="margin-top: 5px;">Set Volume</button>
-            </div>
-            
-            <div class="card">
-                <h2>🎮 Navigation</h2>
-                <div class="btn-group" style="justify-content: center;">
-                    <button onclick="callTool('tv_control', {category: 'navigate', action: 'up'})" style="width: 60px;">⬆️</button>
-                </div>
-                <div class="btn-group" style="justify-content: center; margin-top: 5px;">
-                    <button onclick="callTool('tv_control', {category: 'navigate', action: 'left'})" style="width: 60px;">⬅️</button>
-                    <button onclick="callTool('tv_control', {category: 'navigate', action: 'select'})" style="width: 60px;">OK</button>
-                    <button onclick="callTool('tv_control', {category: 'navigate', action: 'right'})" style="width: 60px;">➡️</button>
-                </div>
-                <div class="btn-group" style="justify-content: center; margin-top: 5px;">
-                    <button onclick="callTool('tv_control', {category: 'navigate', action: 'down'})" style="width: 60px;">⬇️</button>
-                </div>
-                <div class="btn-group" style="justify-content: center; margin-top: 10px;">
-                    <button onclick="callTool('tv_control', {category: 'navigate', action: 'back'})">↩️ Back</button>
-                    <button onclick="callTool('tv_control', {category: 'navigate', action: 'home'})">🏠 Home</button>
-                </div>
-            </div>
-            
-            <div class="card">
-                <h2>📱 Status</h2>
-                <div class="btn-group">
-                    <button onclick="callTool('playback_status', {})">📊 Playback Status</button>
-                </div>
-            </div>
-            
-            <div class="card">
-                <h2>⚡ Power</h2>
-                <div class="btn-group">
-                    <button onclick="callTool('tv_control', {category: 'power', action: 'wake'})">💡 Wake</button>
-                    <button onclick="callTool('tv_control', {category: 'power', action: 'sleep'})">😴 Sleep</button>
-                    <button onclick="callTool('tv_control', {category: 'power', action: 'status'})">📋 Status</button>
-                </div>
-            </div>
-        </div>
-        
-        <div class="card" style="margin-top: 20px;">
-            <h2>📋 Output Log</h2>
-            <button onclick="document.getElementById('output').innerHTML = ''" style="margin-bottom: 10px;">Clear Log</button>
-            <div id="output" class="output">Ready to execute commands...</div>
-        </div>
-    </div>
-    
-    <script>
-        // Get the base path for API calls (works with HA Ingress)
-        const basePath = window.location.pathname.replace(/\/$/, '');
-        const baseUrl = window.location.origin + basePath;
-        document.getElementById('sseEndpoint').textContent = baseUrl + '/sse';
-        
-        let requestId = 1;
-        
-        function log(message, type = 'info') {
-            const output = document.getElementById('output');
-            const time = new Date().toLocaleTimeString();
-            const className = type === 'success' ? 'log-success' : type === 'error' ? 'log-error' : '';
-            output.innerHTML += `<div class="log-entry"><span class="log-time">[${time}]</span> <span class="${className}">${message}</span></div>`;
-            output.scrollTop = output.scrollHeight;
-        }
-        
-        function updateStatus(status, text) {
-            const el = document.getElementById('status');
-            el.className = 'status ' + status;
-            el.textContent = (status === 'connected' ? '●' : status === 'connecting' ? '○' : '●') + ' ' + text;
-        }
-        
-        async function callTool(name, args) {
-            log(`Calling tool: ${name} with args: ${JSON.stringify(args)}`);
-            updateStatus('connecting', 'Executing...');
-            
-            try {
-                const response = await fetch(basePath + '/api/call-tool', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, arguments: args })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    log(`Result: ${JSON.stringify(result.result, null, 2)}`, 'success');
-                    updateStatus('connected', 'Connected');
-                    return result.result;
-                } else {
-                    log(`Error: ${result.error}`, 'error');
-                    updateStatus('disconnected', 'Error');
-                    return null;
-                }
-            } catch (err) {
-                log(`Request failed: ${err.message}`, 'error');
-                updateStatus('disconnected', 'Disconnected');
-                return null;
-            }
-        }
-        
-        async function doSearch() {
-            const query = document.getElementById('searchQuery').value.trim();
-            const type = document.getElementById('searchType').value;
-            const resultsDiv = document.getElementById('searchResults');
-            
-            if (!query) {
-                resultsDiv.innerHTML = '<div class="no-results">Enter a search term</div>';
-                return;
-            }
-            
-            resultsDiv.innerHTML = '<div class="no-results">Searching...</div>';
-            
-            const result = await callTool('search', { query, type });
-            
-            if (!result || result.length === 0) {
-                resultsDiv.innerHTML = '<div class="no-results">No results found</div>';
-                return;
-            }
-            
-            // Parse the result text into structured data
-            const text = result[0] || '';
-            const items = parseSearchResults(text);
-            
-            if (items.length === 0) {
-                resultsDiv.innerHTML = '<div class="no-results">No results found</div>';
-                return;
-            }
-            
-            resultsDiv.innerHTML = items.map(item => {
-                if (item.type === 'tv') {
-                    return `
-                        <div class="search-result" id="result-${item.imdbId}">
-                            <div class="result-info">
-                                <div class="result-title">
-                                    <span class="result-type tv">TV</span>
-                                    ${escapeHtml(item.title)}
-                                </div>
-                                <div class="result-meta">${escapeHtml(item.overview)}</div>
-                                <div class="tv-episode-select">
-                                    <select id="season-${item.imdbId}" onchange="loadEpisodes('${item.imdbId}', '${item.tmdbId}', this.value)">
-                                        <option value="">Loading seasons...</option>
-                                    </select>
-                                    <select id="episode-${item.imdbId}">
-                                        <option value="">Select season first</option>
-                                    </select>
-                                    <button class="play-btn" onclick="playTV('${item.imdbId}')">▶️ Play</button>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                } else {
-                    return `
-                        <div class="search-result">
-                            <div class="result-info">
-                                <div class="result-title">
-                                    <span class="result-type movie">MOVIE</span>
-                                    ${escapeHtml(item.title)}
-                                </div>
-                                <div class="result-meta">${escapeHtml(item.overview)}</div>
-                            </div>
-                            <button class="play-btn" onclick="playMovie('${item.imdbId}')">▶️ Play</button>
-                        </div>
-                    `;
-                }
-            }).join('');
-            
-            // Load seasons for TV shows
-            items.filter(i => i.type === 'tv' && i.tmdbId).forEach(item => {
-                loadSeasons(item.imdbId, item.tmdbId);
-            });
-        }
-        
-        function parseSearchResults(text) {
-            const items = [];
-            const lines = text.split('\n');
-            let current = null;
-            
-            for (const line of lines) {
-                const movieMatch = line.match(/^• \[MOVIE\] (.+?) \((\d{4})\)/);
-                const tvMatch = line.match(/^• \[TV\] (.+?) \((\d{4})\)/);
-                const imdbMatch = line.match(/IMDb ID: (tt\d+)/);
-                const tmdbMatch = line.match(/TMDB ID: (\d+)/);
-                const overviewLine = line.trim();
-                
-                if (movieMatch) {
-                    if (current) items.push(current);
-                    current = { type: 'movie', title: `${movieMatch[1]} (${movieMatch[2]})`, imdbId: '', tmdbId: '', overview: '' };
-                } else if (tvMatch) {
-                    if (current) items.push(current);
-                    current = { type: 'tv', title: `${tvMatch[1]} (${tvMatch[2]})`, imdbId: '', tmdbId: '', overview: '' };
-                } else if (imdbMatch && current) {
-                    current.imdbId = imdbMatch[1];
-                } else if (tmdbMatch && current) {
-                    current.tmdbId = tmdbMatch[1];
-                } else if (current && overviewLine && !overviewLine.startsWith('•') && !overviewLine.startsWith('IMDb') && !overviewLine.includes('TMDB ID')) {
-                    current.overview = overviewLine;
-                }
-            }
-            if (current) items.push(current);
-            
-            // Filter out items without IMDb ID
-            return items.filter(item => item.imdbId);
-        }
-        
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text || '';
-            return div.innerHTML;
-        }
-        
-        function getAutoPlay() {
-            return document.getElementById('autoPlay').checked;
-        }
-        
-        async function loadSeasons(imdbId, tmdbId) {
-            const seasonSelect = document.getElementById(`season-${imdbId}`);
-            if (!seasonSelect) return;
-            
-            try {
-                const response = await fetch(`${basePath}/api/seasons?tmdb_id=${tmdbId}`);
-                const data = await response.json();
-                
-                if (data.success && data.seasons.length > 0) {
-                    seasonSelect.innerHTML = data.seasons.map(s => 
-                        `<option value="${s.season_number}">${s.name} (${s.episode_count} eps)</option>`
-                    ).join('');
-                    
-                    // Load episodes for first season
-                    loadEpisodes(imdbId, tmdbId, data.seasons[0].season_number);
-                } else {
-                    seasonSelect.innerHTML = '<option value="1">Season 1</option>';
-                }
-            } catch (e) {
-                console.error('Failed to load seasons:', e);
-                seasonSelect.innerHTML = '<option value="1">Season 1</option>';
-            }
-        }
-        
-        async function loadEpisodes(imdbId, tmdbId, seasonNumber) {
-            const episodeSelect = document.getElementById(`episode-${imdbId}`);
-            if (!episodeSelect) return;
-            
-            episodeSelect.innerHTML = '<option value="">Loading...</option>';
-            
-            try {
-                const response = await fetch(`${basePath}/api/episodes?tmdb_id=${tmdbId}&season=${seasonNumber}`);
-                const data = await response.json();
-                
-                if (data.success && data.episodes.length > 0) {
-                    episodeSelect.innerHTML = data.episodes.map(e => 
-                        `<option value="${e.episode_number}">E${e.episode_number}: ${escapeHtml(e.name)}</option>`
-                    ).join('');
-                } else {
-                    episodeSelect.innerHTML = '<option value="1">Episode 1</option>';
-                }
-            } catch (e) {
-                console.error('Failed to load episodes:', e);
-                episodeSelect.innerHTML = '<option value="1">Episode 1</option>';
-            }
-        }
-        
-        async function playMovie(imdbId) {
-            const autoPlay = getAutoPlay();
-            log(`Playing movie: ${imdbId} (auto_play: ${autoPlay})`);
-            await callTool('play', { imdb_id: imdbId, type: 'movie', auto_play: autoPlay });
-        }
-        
-        async function playTV(imdbId) {
-            const seasonSelect = document.getElementById(`season-${imdbId}`);
-            const episodeSelect = document.getElementById(`episode-${imdbId}`);
-            const season = parseInt(seasonSelect.value) || 1;
-            const episode = parseInt(episodeSelect.value) || 1;
-            const autoPlay = getAutoPlay();
-            log(`Playing TV: ${imdbId} S${season}E${episode} (auto_play: ${autoPlay})`);
-            await callTool('play', { imdb_id: imdbId, type: 'tv', season, episode, auto_play: autoPlay });
-        }
-        
-        // Check connection on load
-        fetch(basePath + '/api/status')
-            .then(r => r.json())
-            .then(data => {
-                updateStatus('connected', 'Connected - ' + (data.android_tv_connected ? 'Android TV Ready' : 'Android TV Not Connected'));
-                log('Server status: ' + JSON.stringify(data));
-            })
-            .catch(() => updateStatus('disconnected', 'Cannot reach server'));
-    </script>
-</body>
-</html>
-"""
+# Path to HTML template file
+TEST_INTERFACE_HTML_PATH = os.path.join(os.path.dirname(__file__), "test_interface.html")
+if not os.path.exists(TEST_INTERFACE_HTML_PATH):
+    # Try /app path (Docker)
+    TEST_INTERFACE_HTML_PATH = "/app/test_interface.html"
+
+
+def load_test_interface_html() -> str:
+    """Load the HTML template from file"""
+    try:
+        with open(TEST_INTERFACE_HTML_PATH, 'r', encoding='utf-8') as f:
+            return f.read()
+    except Exception as e:
+        logger.error(f"Failed to load test interface HTML: {e}")
+        return "<html><body><h1>Error loading interface</h1></body></html>"
 
 
 def create_sse_app(ingress_port: int = None):
@@ -1505,7 +1130,39 @@ def create_sse_app(ingress_port: int = None):
         # Try /app path (Docker)
         icon_path = "/app/icon.png"
     
-    # Middleware to handle ingress path prefix
+    def is_ingress_request(request) -> bool:
+        """Check if request is coming through Home Assistant ingress"""
+        # Ingress requests have X-Ingress-Path header or come from the supervisor
+        ingress_path = request.headers.get("x-ingress-path")
+        # Also check if it's from the internal HA network
+        forwarded_for = request.headers.get("x-forwarded-for", "")
+        # HA supervisor uses 172.30.32.x range
+        return bool(ingress_path) or forwarded_for.startswith("172.30.")
+    
+    def check_external_api_key(request) -> bool:
+        """Check API key for external (non-ingress) requests"""
+        # If no external API key is configured, deny external access
+        if not EXTERNAL_API_KEY:
+            return False
+        
+        # Check X-API-Key header
+        api_key = request.headers.get("x-api-key")
+        if api_key == EXTERNAL_API_KEY:
+            return True
+        
+        # Check Authorization Bearer header
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            if auth_header[7:] == EXTERNAL_API_KEY:
+                return True
+        
+        # Check query parameter
+        if request.query_params.get("api_key") == EXTERNAL_API_KEY:
+            return True
+        
+        return False
+    
+    # Middleware to handle ingress path prefix and external API auth
     class IngressMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request, call_next):
             # Home Assistant ingress may add a path prefix, handle it gracefully
@@ -1528,7 +1185,7 @@ def create_sse_app(ingress_port: int = None):
     
     async def handle_index(request):
         """Serve the test interface"""
-        return HTMLResponse(TEST_INTERFACE_HTML)
+        return HTMLResponse(load_test_interface_html())
     
     async def handle_status(request):
         """Return server status"""
@@ -1538,10 +1195,19 @@ def create_sse_app(ingress_port: int = None):
             "android_tv_connected": controller is not None,
             "tmdb_configured": bool(TMDB_API_KEY),
             "stremio_library": stremio_client is not None,
+            "external_api_configured": bool(EXTERNAL_API_KEY),
         })
     
     async def handle_call_tool(request):
-        """Handle tool calls from the web interface"""
+        """Handle tool calls from the web interface or external API"""
+        # Check authentication for external (non-ingress) requests
+        if not is_ingress_request(request):
+            if not check_external_api_key(request):
+                return JSONResponse(
+                    {"success": False, "error": "Unauthorized. Set external_api_key in addon config and include it in request."},
+                    status_code=401
+                )
+        
         try:
             body = await request.json()
             tool_name = body.get("name")
