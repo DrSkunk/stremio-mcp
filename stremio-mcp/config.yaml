@@ -9,6 +9,7 @@ arch:
   - armv7
 init: false
 homeassistant_api: false
+stdin: true
 map:
   - share:rw
 options:
@@ -21,7 +22,3 @@ schema:
   android_tv_host: "str"
   android_tv_port: "port"
   stremio_auth_key: "str?"
-ports:
-  3000/tcp: 3000
-ports_description:
-  3000/tcp: "MCP Server port"

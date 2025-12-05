@@ -37,16 +37,32 @@ The addon can be configured through the Home Assistant UI with the following opt
    - Enable **USB Debugging** and **Network Debugging**
 3. Note your Android TV's IP address from Settings > Network & Internet
 
-## Usage with Claude Desktop
+## Usage
 
-Add this to your Claude Desktop configuration:
+The Stremio MCP Server uses stdio (standard input/output) for communication, as per the MCP protocol.
+
+### Using with Home Assistant Assist
+
+This addon can be integrated with Home Assistant's Assist feature to control Stremio via voice commands.
+
+### Using with Claude Desktop
+
+For direct Claude Desktop integration, configure the MCP server to connect to the Home Assistant addon via SSH:
 
 ```json
 {
   "mcpServers": {
     "stremio": {
-      "command": "nc",
-      "args": ["homeassistant.local", "3000"]
+      "command": "ssh",
+      "args": [
+        "homeassistant.local",
+        "docker",
+        "exec",
+        "-i",
+        "addon_local_stremio-mcp",
+        "python3",
+        "/app/stremio_mcp.py"
+      ]
     }
   }
 }

@@ -7,7 +7,7 @@ CONFIG_PATH=/data/options.json
 TMDB_API_KEY=$(jq -r '.tmdb_api_key' "$CONFIG_PATH")
 ANDROID_TV_HOST=$(jq -r '.android_tv_host' "$CONFIG_PATH")
 ANDROID_TV_PORT=$(jq -r '.android_tv_port' "$CONFIG_PATH")
-STREMIO_AUTH_KEY=$(jq -r '.stremio_auth_key // empty' "$CONFIG_PATH")
+STREMIO_AUTH_KEY=$(jq -r '.stremio_auth_key // ""' "$CONFIG_PATH")
 
 # Export environment variables
 export TMDB_API_KEY
