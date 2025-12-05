@@ -25,7 +25,8 @@ check_adb_connection() {
     local target="${ANDROID_TV_HOST}:${ANDROID_TV_PORT}"
     local status
     # Use grep -F for exact literal string matching to avoid partial hostname matches
-    status=$(adb devices 2>/dev/null | grep -F "$target" | awk '{print $2}')
+    # Use head -1 to handle potential duplicate entries in adb devices output
+    status=$(adb devices 2>/dev/null | grep -F "$target" | head -1 | awk '{print $2}')
     
     if [ "$status" = "device" ]; then
         return 0  # Connected and authenticated
